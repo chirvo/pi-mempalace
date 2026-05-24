@@ -9,6 +9,9 @@
  * - `memory_save` tool — manually save a specific piece of information
  * - `memory_recall` tool — retrieve memories for a project/topic (L2)
  * - `memory_status` tool — show memory store overview
+ * - `memory_graph` tool — visualize palace graph and cross-project tunnels
+ * - `memory_mine_directory` tool — recursively scan a codebase into memory
+ * - `memory_mine_conversation` tool — import conversation transcripts
  * - Auto-capture of conversation exchanges on session shutdown/compact
  * - Wake-up context injection (L0 identity + L1 top memories) into system prompt
  * - Status widget showing memory count
@@ -27,19 +30,15 @@ import { Type } from "@sinclair/typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { MemoryStore } from "./memory_store.js";
+import { MemoryStore, DEFAULT_MEMORY_DIR } from "./memory_store.js";
 import { mineDirectory, mineConversation } from "./miner.js";
+import { CaptureNotifier } from "./notifier.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const MEMORY_DIR = path.join(
-  process.env.HOME || process.env.USERPROFILE || "~",
-  ".pi",
-  "agent",
-  "memory"
-);
+const MEMORY_DIR = DEFAULT_MEMORY_DIR;
 const CONFIG_PATH = path.join(MEMORY_DIR, "config.json");
 const TOPIC_MODEL_NAME = "Xenova/flan-t5-small";
 
@@ -77,8 +76,8 @@ interface MemoryRuntime {
   enabled: boolean;
   /** The memory store instance */
   store: MemoryStore;
-  /** Whether the auto-capture notification has been shown this session */
-  autoCaptureNotified: boolean;
+  /** Tracks first-time auto-capture notification */
+  captureNotifier: CaptureNotifier;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +104,7 @@ function createRuntime(): MemoryRuntime {
     currentProject: "general",
     enabled: true,
     store: new MemoryStore(),
-    autoCaptureNotified: false,
+    captureNotifier: new CaptureNotifier(),
   };
 }
 
@@ -507,8 +506,7 @@ export default function memoryExtension(pi: ExtensionAPI) {
           (runtime.projects[runtime.currentProject] || 0) + 1;
 
         // Notify user on first auto-capture of the session
-        if (!runtime.autoCaptureNotified) {
-          runtime.autoCaptureNotified = true;
+        if (runtime.captureNotifier.markNotified()) {
           ctx.ui.notify(
             "🧠 Memory auto-capture is on. Use `/memory off` to disable privacy mode.",
             "info"

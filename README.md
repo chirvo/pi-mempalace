@@ -41,7 +41,7 @@ pi-mempalace takes that core philosophy — **verbatim storage + semantic search
 
 ```bash
 # Install from GitHub
-pi install git:github.com/Jabbslad/pi-mempalace
+pi install git:github.com/chirvo/pi-mempalace
 
 # Or from a local checkout
 pi install /path/to/pi-mempalace

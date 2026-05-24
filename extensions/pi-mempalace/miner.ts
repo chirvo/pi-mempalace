@@ -282,51 +282,62 @@ export function scanDirectory(
 
 /**
  * Detect a topic from file path and content.
- * Uses file extension + directory as a heuristic.
+ * Uses file extension, content keywords, and directory heuristics.
  */
-function detectTopicFromPath(filePath: string, _content: string): string {
+function detectTopicFromPath(filePath: string, content: string): string {
   const ext = path.extname(filePath).toLowerCase().replace(".", "");
   const dir = path.basename(path.dirname(filePath)).toLowerCase();
+  const contentSample = content.slice(0, 500).toLowerCase();
 
   // Map extensions to topics
   const topicMap: Record<string, string> = {
-    ts: "typescript",
-    tsx: "react",
-    js: "javascript",
-    jsx: "react",
-    py: "python",
-    rs: "rust",
-    go: "go",
-    java: "java",
-    md: "documentation",
-    sql: "database",
-    css: "styling",
-    scss: "styling",
-    html: "markup",
-    json: "configuration",
-    yaml: "configuration",
-    yml: "configuration",
-    sh: "shell",
-    graphql: "api",
-    proto: "api",
+    ts: "typescript", tsx: "react",
+    js: "javascript", jsx: "react",
+    py: "python", rs: "rust",
+    go: "go", java: "java",
+    md: "documentation", sql: "database",
+    css: "styling", scss: "styling",
+    html: "markup", svelte: "svelte", vue: "vue",
+    json: "configuration", yaml: "configuration", yml: "configuration",
+    sh: "shell", graphql: "api", proto: "api",
   };
-
   const fromExt = topicMap[ext];
   if (fromExt) return fromExt;
 
+  // Content-based topic detection (first 500 chars)
+  if (contentSample.includes("test(") || contentSample.includes("describe(") ||
+      contentSample.includes("it(") || contentSample.includes("assert")) {
+    return "testing";
+  }
+  if (contentSample.includes("import react") || contentSample.includes("from 'react'") ||
+      contentSample.includes("jsx") || contentSample.includes("tsx")) {
+    return "react";
+  }
+  if (contentSample.includes("select * from") || contentSample.includes("create table") ||
+      contentSample.includes("insert into") || contentSample.includes("alter table")) {
+    return "database";
+  }
+  if (contentSample.includes("@api") || contentSample.includes("@route") ||
+      contentSample.includes("@endpoint") || contentSample.includes("http")) {
+    return "api";
+  }
+  if (contentSample.includes("import") || contentSample.includes("export ") ||
+      contentSample.includes("require(")) {
+    return "source";
+  }
+
   // Fall back to directory-based topic
   const dirTopicMap: Record<string, string> = {
-    src: "source",
-    lib: "source",
-    test: "testing",
-    tests: "testing",
-    docs: "documentation",
-    config: "configuration",
-    api: "api",
-    db: "database",
-    components: "components",
-    pages: "pages",
-    styles: "styling",
+    src: "source", lib: "source",
+    test: "testing", tests: "testing", spec: "testing", __tests__: "testing",
+    docs: "documentation", doc: "documentation", wiki: "documentation",
+    config: "configuration", conf: "configuration",
+    api: "api", routes: "api", endpoints: "api",
+    db: "database", database: "database", migrations: "database", models: "database",
+    components: "components", pages: "pages",
+    styles: "styling", style: "styling", css: "styling",
+    hooks: "hooks", utils: "utilities", helpers: "utilities",
+    types: "types", type: "types", interfaces: "types",
   };
 
   return dirTopicMap[dir] || "code";

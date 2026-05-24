@@ -20,14 +20,14 @@ import * as sqliteVec from "sqlite-vec";
 
 import {
   EMBEDDING_DIM,
-  CHUNK_SIZE,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Default memory directory (home-dir-relative)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MEMORY_DIR = path.join(
+/** Default memory directory path. Export so index.ts can share it. */
+export const DEFAULT_MEMORY_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE || "~",
   ".pi",
   "agent",

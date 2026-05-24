@@ -10,7 +10,6 @@
  *   npx tsx tests/test_modular_refactor.mjs
  */
 
-import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -29,48 +28,17 @@ function test(name, fn) {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers (mirrored from memory_store.ts for testing notification logic)
+// Imports from production code
 // ---------------------------------------------------------------------------
 
-/**
- * Content hash — mirrors memory_store.ts implementation.
- */
-function contentHash(content) {
-  return crypto
-    .createHash("sha256")
-    .update(content, "utf-8")
-    .digest("hex")
-    .slice(0, 16);
-}
+let CaptureNotifier;
+let contentHash;
 
-/**
- * First-capture notification tracker.
- * Tracks whether the user has been notified about auto-capture.
- */
-class CaptureNotifier {
-  constructor() {
-    this._notified = false;
-  }
-
-  /** Whether the user has been notified. */
-  get notified() {
-    return this._notified;
-  }
-
-  /**
-   * Mark as notified. Returns true if this is the first call (should notify).
-   * Returns false if already notified (should NOT notify).
-   */
-  markNotified() {
-    if (this._notified) return false;
-    this._notified = true;
-    return true;
-  }
-
-  /** Reset for testing. */
-  reset() {
-    this._notified = false;
-  }
+async function loadProductionCode() {
+  const notifier = await import("../extensions/pi-mempalace/notifier.ts");
+  const utils = await import("../extensions/pi-mempalace/utils.ts");
+  CaptureNotifier = notifier.CaptureNotifier;
+  contentHash = utils.contentHash;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +153,8 @@ test("MemoryStore: core exports exist after modularization", async () => {
 // ---------------------------------------------------------------------------
 
 async function run() {
+  await loadProductionCode();
+
   console.log(`Running ${TESTS.length} modular refactor tests...\n`);
 
   for (const { name, fn } of TESTS) {
