@@ -316,20 +316,38 @@ function detectExchangeStart(line: string, prevLine: string): boolean {
 
   // Question indicators
   const questionPatterns = [
-    /^[A-Z][^.!?]*[?]$/,
+    // Any sentence ending with ? (works for all languages using ?)
+    // Supports uppercase Latin, Cyrillic, Greek, and Spanish inverted ¿ prefix
+    /^[A-Z\u00d1\u00c1-\u00dc\u0410-\u042f\u0391-\u03a9¿][^.!?]*[?]$/u,
+    // English question words
     /^(what|who|where|when|why|how|which|can|could|would|should|is|are|do|does|did)\s/i,
-    /^(user|human|me|my|i)\s*:/i,
+    // Spanish / Portuguese question words
+    /^(qu[eé]|c[oó]mo|cu[aá]ndo|d[oó]nde|por qu[eé]|qui[eé]n|cu[aá]l|cu[aá]nto|puede|podr[ií]a|deber[ií]a|es|est[áa]|son|hay|tiene|existe|o que|qual|quanto|pode|deveria)\s/i,
+    // Russian question words (Cyrillic)
+    /^([чЧ]то|[кК]то|[гГ]де|[кК]огда|[пП]очему|[зЗ]ачем|[кК]ак|[кК]акой|[кК]оторый|[сС]колько|[мМ]ожно|[нН]ужно|[дД]олжен|[еЕ]сть|[бБ]ыл|[бБ]удет|[яЯ]вляется)\s/u,
+    // German question words
+    /^(was|wer|wo|wann|warum|wieso|wie|welcher|welche|welches|kann|k[oö]nnte|sollte|ist|sind|w[üu]rde|h[äa]tte|w[äa]re|darf|mag)\s/i,
+    // Speaker labels (multi-language)
+    /^(user|human|me|my|i|you)\s*:/i,
+    /^(usuario|humano|yo|t[uú]|mi)\s*:/i,
+    /^(usu[aá]rio|humano|eu|voc[êe]|meu)\s*:/i,
+    /^(пользователь|человек|я|ты|вы|мой)\s*:/u,
+    /^(benutzer|mensch|ich|du|sie|mein)\s*:/i,
   ];
 
   for (const pattern of questionPatterns) {
     if (pattern.test(line)) return true;
   }
 
-  // Message separator patterns
+  // Message separator patterns (multi-language role labels)
   const separatorPatterns = [
     /^\d{1,2}:\d{2}/,
     /^\[\d{1,2}:\d{2}/,
     /^(human|user|assistant|bot|agent|system):\s*/i,
+    /^(humano|usuario|asistente|bot|agente|sistema):\s*/i,
+    /^(humano|usu[aá]rio|assistente|bot|agente|sistema):\s*/i,
+    /^(человек|пользователь|ассистент|бот|агент|система):\s*/u,
+    /^(mensch|benutzer|assistent|bot|agent|system):\s*/i,
     /^---+$/,
   ];
 
@@ -340,9 +358,17 @@ function detectExchangeStart(line: string, prevLine: string): boolean {
   // If previous line was long and this is short, might be a new exchange
   if (prevLine.length > 80 && line.length < 80 && line.length > 0) {
     const responsePatterns = [
-      /^[A-Z]/,
+      // Starts with uppercase letter (Latin, Cyrillic, Greek)
+      /^[A-Z\u0410-\u042f\u0391-\u03a9]/u,
+      // English response particles
       /^(yes|no|sure|okay|ok|indeed|certainly|absolutely|definitely)/i,
       /^(here|there|this|that|the|to|and|in|on|with|for|of|a|an)/i,
+      // Spanish / Portuguese response particles
+      /^(s[ií]|no|claro|okay|vale|correcto|exacto|definitivamente|absolutamente|sim|n[aã]o|certo|exato)/i,
+      // Russian response particles
+      /^(да|нет|конечно|хорошо|ладно|точно|верно|абсолютно)/u,
+      // German response particles
+      /^(ja|nein|klar|okay|richtig|genau|absolut|nat[uü]rlich|gerne|sicher)/i,
     ];
 
     for (const pattern of responsePatterns) {

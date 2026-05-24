@@ -168,6 +168,64 @@ async function defineTests() {
     const chunks = chunkConversation("What is your name?", "test");
     assert.equal(chunks.length, 1);
   });
+
+  // -----------------------------------------------------------------------
+  // Multi-language conversation chunking
+  // -----------------------------------------------------------------------
+
+  test("chunkConversation: Spanish Q+A", () => {
+    const text = "¿Qué es TypeScript?\n\nTypeScript es un superconjunto tipado de JavaScript.\n\n¿Cómo se instala?\n\nnpm install -g typescript";
+    const chunks = chunkConversation(text, "es");
+    assert.ok(chunks.length >= 2, `Spanish: expected >= 2, got ${chunks.length}`);
+  });
+
+  test("chunkConversation: Spanish speaker labels", () => {
+    const text = "usuario: ¿cómo configuro la base de datos?\n\nasistente: debes ejecutar las migraciones primero.";
+    const chunks = chunkConversation(text, "es-labels");
+    assert.ok(chunks.length >= 1);
+  });
+
+  test("chunkConversation: Portuguese Q+A", () => {
+    const text = "O que é TypeScript?\n\nTypeScript é um superconjunto tipado de JavaScript.\n\nComo instalar?\n\nnpm install -g typescript";
+    const chunks = chunkConversation(text, "pt");
+    assert.ok(chunks.length >= 2, `Portuguese: expected >= 2, got ${chunks.length}`);
+  });
+
+  test("chunkConversation: Portuguese speaker labels", () => {
+    const text = "usuário: como configuro o banco de dados?\n\nassistente: você precisa executar as migrações primeiro.";
+    const chunks = chunkConversation(text, "pt-labels");
+    assert.ok(chunks.length >= 1);
+  });
+
+  test("chunkConversation: Russian Q+A", () => {
+    const text = "Что такое TypeScript?\n\nTypeScript — это типизированное надмножество JavaScript.\n\nКак установить?\n\nnpm install -g typescript";
+    const chunks = chunkConversation(text, "ru");
+    assert.ok(chunks.length >= 2, `Russian: expected >= 2, got ${chunks.length}`);
+  });
+
+  test("chunkConversation: Russian speaker labels", () => {
+    const text = "пользователь: как настроить базу данных?\n\nассистент: сначала нужно выполнить миграции.";
+    const chunks = chunkConversation(text, "ru-labels");
+    assert.ok(chunks.length >= 1);
+  });
+
+  test("chunkConversation: German Q+A", () => {
+    const text = "Was ist TypeScript?\n\nTypeScript ist eine typisierte Obermenge von JavaScript.\n\nWie installiert man es?\n\nnpm install -g typescript";
+    const chunks = chunkConversation(text, "de");
+    assert.ok(chunks.length >= 2, `German: expected >= 2, got ${chunks.length}`);
+  });
+
+  test("chunkConversation: German speaker labels", () => {
+    const text = "benutzer: wie konfiguriere ich die Datenbank?\n\nassistent: du musst zuerst die Migrationen ausführen.";
+    const chunks = chunkConversation(text, "de-labels");
+    assert.ok(chunks.length >= 1);
+  });
+
+  test("chunkConversation: mixed Spanish-Russian conversation", () => {
+    const text = "Hola, ¿cómo estás?\n\nПривет, всё хорошо!\n\n¿Qué es una base de datos?\n\nЭто место для хранения данных.";
+    const chunks = chunkConversation(text, "mix");
+    assert.ok(chunks.length >= 2, `Mixed: expected >= 2, got ${chunks.length}`);
+  });
 }
 
 // ---------------------------------------------------------------------------
