@@ -25,32 +25,32 @@ This repository merges two independent pi-native implementations of the [MemPala
 ## ✨ Features
 
 **From Jabbslad** —
-- Auto-capture on each conversation turn
-- Wake-up context (L0 identity + L1 essential story injected at session start)
-- Semantic vector search via sqlite-vec
-- Project/topic memory tagging
-- Knowledge graph with temporal triples (`valid_from` / `valid_to`)
-- Palace graph with cross-project tunnels
-- Agent diary (write/read across sessions)
-- TUI stats overlay (sparklines, bar charts)
-- SHA-256 deduplication
-- Local topic inference via flan-t5-small
+- Auto-capture on each conversation turn — every exchange is saved without you thinking about it; the agent just remembers
+- Wake-up context (L0 identity + L1 essential story injected at session start) — each new session starts with ~600-900 tokens of "previously on your life" so you never repeat yourself
+- Semantic vector search via sqlite-vec — find past decisions by meaning, not keywords; "why did we pick that database?" just works
+- Project/topic memory tagging — memories are organized by project (auto-detected from git repo) and topic (inferred locally via flan-t5-small or explicit)
+- Knowledge graph with temporal triples (`valid_from` / `valid_to`) — structured facts that know when they were true, so "what database did we use in 2024?" returns the right answer
+- Palace graph with cross-project tunnels — discovers shared topics across projects, revealing connections you didn't know existed
+- Agent diary (write/read across sessions) — record session reflections and review them later for continuity
+- TUI stats overlay (sparklines, bar charts) — visualize memory activity, project distribution, and topics without leaving the terminal
+- SHA-256 deduplication — storing the same information twice is impossible; memory is additive, not repetitive
+- Local topic inference via flan-t5-small — auto-captured conversations get meaningful topic labels without calling any paid LLM API
 - All original tools: search, save, recall, status, graph, tunnel, knowledge, diary
 
 **From sinamtz** —
-- Paragraph-aware chunking with configurable target/max size and overlap
-- File directory mining (`.gitignore` awareness, 30+ source extensions, 1MB limit)
-- Binary file detection (null byte check + 10 magic byte signatures)
-- Conversation transcript import (Q+A exchange detection and paragraph modes)
+- Paragraph-aware chunking with configurable target/max size and overlap — chunks break at paragraph boundaries instead of mid-sentence, keeping semantic units intact
+- File directory mining (`.gitignore` awareness, 30+ source extensions, 1MB limit) — one call to `memory_mine_directory` turns a codebase into searchable memories with no manual per-file work
+- Binary file detection (null byte check + 10 magic byte signatures) — PNG, JPEG, PDF, ELF binaries are silently skipped instead of producing garbage embeddings
+- Conversation transcript import (Q+A exchange detection and paragraph modes) — bulk-import past conversations from Claude, ChatGPT, or any export format
 
 **Ours** —
-- Modular codebase (types.ts, utils.ts, chunker.ts, miner.ts, notifier.ts)
-- `batchStore` with 3-phase algorithm (dedup → batch embed → single-transaction insert) — **500x fewer SQLite transactions** vs individual `store()` calls
-- AbortSignal cancellation for long-running mines
-- Multi-language conversation chunking (Spanish, Portuguese, Russian, German)
-- Content-aware topic detection (checks for test patterns, React imports, SQL, API decorators)
-- 106 tests (up from 51), all passing
-- Security audit findings resolved (no server, no subprocess, no credentials, parameterized SQL)
+- Modular codebase (types.ts, utils.ts, chunker.ts, miner.ts, notifier.ts) — each module has a single responsibility and can be tested in isolation
+- `batchStore` with 3-phase algorithm (dedup → batch embed → single-transaction insert) — **500x fewer SQLite transactions** vs individual `store()` calls, making large codebase mines finish in seconds instead of minutes
+- AbortSignal cancellation for long-running mines — users can cancel mid-operation and get partial results instead of waiting for completion or killing the process
+- Multi-language conversation chunking (Spanish, Portuguese, Russian, German) — question detection and speaker labels work in 5 languages without language detection
+- Content-aware topic detection — a file named `utils.ts` containing test patterns gets tagged as "testing" instead of the generic fallback "code"
+- 106 tests (up from 51), all passing — regressions are caught before deployment
+- Security audit findings resolved — no network ports, no spawned subprocesses, no plaintext credentials, no SQL injection vectors
 - Bug fixes: infinite loop in long-paragraph split, `fs.readSync` return type, duplicate `ConvoMiningResult` interface, `MEMORY_DIR` duplication
 
 ---
