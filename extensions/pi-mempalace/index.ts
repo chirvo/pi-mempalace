@@ -1417,14 +1417,14 @@ export default function memoryExtension(pi: ExtensionAPI) {
           wing: project,
           source: `directory:${directory}`,
           store: async (memories) => {
-            for (const m of memories) {
-              await runtime.store.store({
+            await runtime.store.batchStore(
+              memories.map(m => ({
                 content: m.content,
                 project: m.project,
                 topic: m.topic,
                 source: m.source,
-              });
-            }
+              }))
+            );
           },
         });
 
@@ -1508,14 +1508,14 @@ export default function memoryExtension(pi: ExtensionAPI) {
           source: "conversation-import",
           mode,
           store: async (memories) => {
-            for (const m of memories) {
-              await runtime.store.store({
+            await runtime.store.batchStore(
+              memories.map(m => ({
                 content: m.content,
                 project: m.project,
                 topic: m.topic,
                 source: m.source,
-              });
-            }
+              }))
+            );
           },
         });
 

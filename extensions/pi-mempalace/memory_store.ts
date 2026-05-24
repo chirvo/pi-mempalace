@@ -475,19 +475,97 @@ export class MemoryStore {
       throw new Error("No items provided");
     }
 
-    const results: StoreResult[] = [];
-    let stored = 0;
-    let duplicates = 0;
+    this.ensureLoaded();
+
+    // Phase 1: Validate inputs and check for duplicates.
+    // Items are assumed to be pre-chunked (no re-chunking).
+    const batch: Array<{
+      content: string;
+      cHash: string;
+      docId: string;
+      project: string;
+      topic: string;
+      source: string;
+      timestamp: string;
+      sessionId: string;
+      importance: number;
+    }> = [];
+
+    const duplicates: StoreResult[] = [];
 
     for (const item of items) {
-      if (!(item.content || "").trim()) continue;
-      const result = await this.store(item);
-      results.push(result);
-      if (result.status === "stored") stored++;
-      else duplicates++;
+      const content = (item.content || "").trim();
+      if (!content) continue;
+
+      const project = item.project || "general";
+      const topic = item.topic || "general";
+      const source = item.source || "batch-store";
+      const timestamp = item.timestamp || new Date().toISOString();
+      const sessionId = item.session_id || "";
+      const importance = item.importance ?? 0.5;
+
+      const cHash = contentHash(content);
+      const docId = `mem_${cHash}`;
+
+      // Check for duplicate by content hash
+      if (this.stmtFindByHash.get(cHash)) {
+        duplicates.push({ status: "duplicate", id: docId });
+        continue;
+      }
+
+      batch.push({ content, cHash, docId, project, topic, source, timestamp, sessionId, importance });
     }
 
-    return { stored, duplicates, results };
+    if (batch.length === 0) {
+      return { stored: 0, duplicates: duplicates.length, results: duplicates };
+    }
+
+    // Phase 2: Generate all embeddings sequentially.
+    // The embedder pipeline is cached after the first call,
+    // so subsequent calls are just inference (no load overhead).
+    const embeddings: Float32Array[] = [];
+    for (const item of batch) {
+      const vec = await embed(item.content);
+      embeddings.push(vec);
+    }
+
+    // Phase 3: Insert all in a single SQLite transaction.
+    const insertBatch = this.db.transaction(() => {
+      for (let i = 0; i < batch.length; i++) {
+        const item = batch[i];
+        const vec = embeddings[i];
+
+        const info = this.stmtInsertMemory.run({
+          id: item.docId,
+          content: item.content,
+          content_hash: item.cHash,
+          project: item.project,
+          topic: item.topic,
+          source: item.source,
+          timestamp: item.timestamp,
+          session_id: item.sessionId,
+          importance: item.importance,
+          chunk_index: 0,
+          parent_id: null,
+        });
+        const rowid = Number(info.lastInsertRowid);
+        this.stmtInsertVec.run(BigInt(rowid), vec);
+      }
+    });
+    insertBatch();
+
+    // Build results: stored items first, then duplicates
+    const stored = batch.length;
+    const storedResults: StoreResult[] = batch.map(item => ({
+      status: "stored" as const,
+      id: item.docId,
+    }));
+    const results = [...storedResults, ...duplicates];
+
+    // Invalidate L1 cache
+    this.cachedL1 = null;
+
+    return { stored, duplicates: duplicates.length, results };
   }
 
   /**
