@@ -47,28 +47,28 @@ async function loadProductionCode() {
 
 test("CaptureNotifier: starts un-notified", () => {
   const n = new CaptureNotifier();
-  assert.equal(n.notified, false);
+  assert.equal(n.hasNotified, false);
 });
 
 test("CaptureNotifier: first mark returns true", () => {
   const n = new CaptureNotifier();
   assert.equal(n.markNotified(), true);
-  assert.equal(n.notified, true);
+  assert.equal(n.hasNotified, true);
 });
 
 test("CaptureNotifier: second mark returns false", () => {
   const n = new CaptureNotifier();
   n.markNotified();
   assert.equal(n.markNotified(), false);
-  assert.equal(n.notified, true);
+  assert.equal(n.hasNotified, true);
 });
 
 test("CaptureNotifier: reset restores state", () => {
   const n = new CaptureNotifier();
   n.markNotified();
-  assert.equal(n.notified, true);
+  assert.equal(n.hasNotified, true);
   n.reset();
-  assert.equal(n.notified, false);
+  assert.equal(n.hasNotified, false);
   assert.equal(n.markNotified(), true); // First call after reset
 });
 
@@ -77,7 +77,7 @@ test("CaptureNotifier: multiple marks idempotent", () => {
   n.markNotified();
   n.markNotified();
   n.markNotified();
-  assert.equal(n.notified, true);
+  assert.equal(n.hasNotified, true);
   assert.equal(n.markNotified(), false);
 });
 

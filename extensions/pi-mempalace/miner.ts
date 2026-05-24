@@ -421,8 +421,7 @@ export async function mineDirectory(options: FileMinerOptions): Promise<FileMini
     });
     rawFiles.push(...scanned);
   } catch (err) {
-    // @ts-ignore
-    if (err instanceof DOMException && err.name === "AbortError") {
+    if ((err as Error)?.name === "AbortError") {
       result.aborted = true;
       return result;
     }

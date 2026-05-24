@@ -479,6 +479,7 @@ export class MemoryStore {
 
     // Phase 1: Validate inputs and check for duplicates.
     // Items are assumed to be pre-chunked (no re-chunking).
+    // Track input order: batchIndex -> resultIndex mapping
     const batch: Array<{
       content: string;
       cHash: string;
@@ -489,13 +490,18 @@ export class MemoryStore {
       timestamp: string;
       sessionId: string;
       importance: number;
+      resultIndex: number;
     }> = [];
 
-    const duplicates: StoreResult[] = [];
+    // results[i] corresponds to items[i] (preserving input order)
+    const results: StoreResult[] = [];
 
     for (const item of items) {
       const content = (item.content || "").trim();
-      if (!content) continue;
+      if (!content) {
+        results.push({ status: "duplicate", id: "skipped" });
+        continue;
+      }
 
       const project = item.project || "general";
       const topic = item.topic || "general";
@@ -509,15 +515,16 @@ export class MemoryStore {
 
       // Check for duplicate by content hash
       if (this.stmtFindByHash.get(cHash)) {
-        duplicates.push({ status: "duplicate", id: docId });
+        results.push({ status: "duplicate", id: docId });
         continue;
       }
 
-      batch.push({ content, cHash, docId, project, topic, source, timestamp, sessionId, importance });
+      batch.push({ content, cHash, docId, project, topic, source, timestamp, sessionId, importance, resultIndex: results.length });
+      results.push({ status: "stored", id: docId }); // placeholder
     }
 
     if (batch.length === 0) {
-      return { stored: 0, duplicates: duplicates.length, results: duplicates };
+      return { stored: 0, duplicates: results.filter(r => r.status !== "stored").length, results };
     }
 
     // Phase 2: Generate all embeddings sequentially.
@@ -554,18 +561,12 @@ export class MemoryStore {
     });
     insertBatch();
 
-    // Build results: stored items first, then duplicates
     const stored = batch.length;
-    const storedResults: StoreResult[] = batch.map(item => ({
-      status: "stored" as const,
-      id: item.docId,
-    }));
-    const results = [...storedResults, ...duplicates];
 
     // Invalidate L1 cache
     this.cachedL1 = null;
 
-    return { stored, duplicates: duplicates.length, results };
+    return { stored, duplicates: results.length - stored, results };
   }
 
   /**
