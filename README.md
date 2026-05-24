@@ -8,9 +8,23 @@ Every conversation you've ever had with an AI — every architectural decision, 
 
 ---
 
+## 🧬 Fork & Credits
+
+This repository is a **merge of two independent pi-native implementations** of the MemPalace concept, combining their strengths into a single, well-tested codebase:
+
+| Source | Author | Contribution |
+|--------|--------|-------------|
+| [🚀 **Jabbslad/pi-mempalace**](https://github.com/Jabbslad/pi-mempalace) | **Jamie Slade** | Original pi-native implementation — SQLite + sqlite-vec backend, auto-capture, knowledge graph, palace graph, agent diary, wake-up context, TUI stats overlay, and the 4-layer memory stack. This repo is forked from Jabbslad's work and retains his architectural foundation. |
+| [🧠 **@sinamtz/pi-mempalace**](https://github.com/sinamtz/pi-mempalace) | **Sina Montazeri** | Ideas and code ported from this fork: paragraph-aware chunking with overlap, file directory mining (`.gitignore` awareness, binary detection, 30+ source extensions), conversation transcript import (Q+A exchange detection), auto-server SurrealDB pattern (evaluated and rejected in favor of SQLite for security/simplicity), and the layered retrieval protocol concepts. |
+| [🏰 **MemPalace**](https://github.com/MemPalace/mempalace) | **Milla Jovovich & Ben Sigman** | The original palace metaphor (wings, rooms, tunnels), the verbatim-storage philosophy, the 4-layer retrieval stack, and LongMemEval benchmark validation. Both pi-native implementations are directly inspired by this project. |
+
+**The current repository is co-authored by [Irving A. Bermúdez S.](https://github.com/chirvo)** — who forked Jabbslad's work, ported features from sinamtz's fork, and performed the security audit, modular refactor, TDD test suite, and issue triage documented below.
+
+---
+
 ## 🏰 Standing on the Shoulders of a Memory Palace
 
-This project is directly inspired by the wonderful [MemPalace](https://github.com/MemPalace/mempalace) — built by **Milla Jovovich** (yes, *that* Milla Jovovich — Leeloo from *The Fifth Element*, Alice from *Resident Evil*) and developer **Ben Sigman**.
+This whole lineage traces back to the wonderful [MemPalace](https://github.com/MemPalace/mempalace) — built by **Milla Jovovich** (yes, *that* Milla Jovovich — Leeloo from *The Fifth Element*, Alice from *Resident Evil*) and developer **Ben Sigman**.
 
 > **Official MemPalace sources:** [github.com/MemPalace/mempalace](https://github.com/MemPalace/mempalace), [PyPI](https://pypi.org/project/mempalace/), and [mempalaceofficial.com](https://mempalaceofficial.com). Avoid unofficial MemPalace domains.
 
@@ -318,5 +332,9 @@ MIT — because memories should be free.
   <br/>
   🧠 Built for <a href="https://github.com/badlogic/pi-mono">pi</a> with ❤️ and a fear of forgetting
   <br/>
-  🔧 Forked from <a href="https://github.com/Jabbslad/pi-mempalace">Jabbslad/pi-mempalace</a> by Jamie Slade — original pi-native implementation
+  🔧 Forked from <a href="https://github.com/Jabbslad/pi-mempalace">Jabbslad/pi-mempalace</a> by Jamie Slade
+  <br/>
+  🧬 Merged with ideas from <a href="https://github.com/sinamtz/pi-mempalace">sinamtz/pi-mempalace</a> by Sina Montazeri
+  <br/>
+  ✨ Co-authored by <a href="https://github.com/chirvo">Irving A. Bermúdez S.</a>
 </p>
