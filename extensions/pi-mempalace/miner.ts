@@ -44,6 +44,8 @@ export interface FileMinerOptions {
     topic: string;
     source: string;
   }>) => Promise<unknown>) | null;
+  /** Optional AbortSignal to cancel a long-running mine mid-operation. */
+  signal?: AbortSignal;
 }
 
 /** File mining result */
@@ -55,6 +57,20 @@ export interface FileMiningResult {
   memoriesStored: number;
   errors: Array<{ file: string; error: string }>;
   skippedFiles: Array<{ file: string; reason: string }>;
+  /** True if the operation was aborted before completing. */
+  aborted: boolean;
+}
+
+/** Conversation mining result */
+export interface ConvoMiningResult {
+  exchangesFound: number;
+  chunksCreated: number;
+  memoriesStored: number;
+  detectedRoom: string;
+  assignedWing: string;
+  errors: Array<{ exchange: number; error: string }>;
+  /** True if the operation was aborted before completing. */
+  aborted: boolean;
 }
 
 /** Conversation mining options */
@@ -76,16 +92,6 @@ export interface ConvoMinerOptions {
     topic: string;
     source: string;
   }>) => Promise<unknown>) | null;
-}
-
-/** Conversation mining result */
-export interface ConvoMiningResult {
-  exchangesFound: number;
-  chunksCreated: number;
-  memoriesStored: number;
-  detectedRoom: string;
-  assignedWing: string;
-  errors: Array<{ exchange: number; error: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +218,16 @@ export function loadIgnorePatterns(directory: string): ReturnType<typeof ignore>
  * Scan directory recursively for files to process.
  * Returns absolute file paths that passed all filters.
  */
+/**
+ * AbortSignal-aware helper: throws if the signal is aborted.
+ * Call this at checkpoints in long operations.
+ */
+function checkAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Mine cancelled", "AbortError");
+  }
+}
+
 export function scanDirectory(
   rootDir: string,
   currentDir: string,
@@ -220,8 +236,10 @@ export function scanDirectory(
     extensions: string[];
     maxFileSize: number;
     followSymlinks: boolean;
+    signal?: AbortSignal;
   },
 ): string[] {
+  checkAborted(options.signal);
   const files: string[] = [];
 
   try {
@@ -246,6 +264,7 @@ export function scanDirectory(
 
         const subFiles = scanDirectory(rootDir, fullPath, ig, options);
         files.push(...subFiles);
+        checkAborted(options.signal);
         continue;
       }
 
@@ -375,6 +394,7 @@ export async function mineDirectory(options: FileMinerOptions): Promise<FileMini
     memoriesStored: 0,
     errors: [],
     skippedFiles: [],
+    aborted: false,
   };
 
   const resolvedDir = path.resolve(directory);
@@ -390,12 +410,24 @@ export async function mineDirectory(options: FileMinerOptions): Promise<FileMini
   // Determine project/wing
   const project = explicitWing || path.basename(resolvedDir);
 
-  // Scan directory
-  const rawFiles = scanDirectory(resolvedDir, resolvedDir, ig, {
-    extensions,
-    maxFileSize,
-    followSymlinks,
-  });
+  // Scan directory (with abort awareness)
+  const rawFiles: string[] = [];
+  try {
+    const scanned = scanDirectory(resolvedDir, resolvedDir, ig, {
+      extensions,
+      maxFileSize,
+      followSymlinks,
+      signal: options.signal,
+    });
+    rawFiles.push(...scanned);
+  } catch (err) {
+    // @ts-ignore
+    if (err instanceof DOMException && err.name === "AbortError") {
+      result.aborted = true;
+      return result;
+    }
+    throw err;
+  }
 
   result.filesScanned = rawFiles.length;
 
@@ -403,6 +435,9 @@ export async function mineDirectory(options: FileMinerOptions): Promise<FileMini
   const allMemories: Array<{ content: string; project: string; topic: string; source: string }> = [];
 
   for (const filePath of rawFiles) {
+    // Check for cancellation between files
+    checkAborted(options.signal);
+
     const relativePath = path.relative(resolvedDir, filePath);
     const fileSource = source
       ? `${source}:${relativePath}`
@@ -455,6 +490,7 @@ export async function mineDirectory(options: FileMinerOptions): Promise<FileMini
     const BATCH_SIZE = 10;
     let stored = 0;
     for (let i = 0; i < allMemories.length; i += BATCH_SIZE) {
+      checkAborted(options.signal);
       const batch = allMemories.slice(i, i + BATCH_SIZE);
       try {
         await store(batch);
@@ -503,8 +539,11 @@ export async function mineConversation(options: ConvoMinerOptions): Promise<Conv
       detectedRoom: "general",
       assignedWing: explicitWing || "general",
       errors: [],
+      aborted: false,
     };
   }
+
+  checkAborted(options.signal);
 
   // Chunk based on mode
   let chunks: Chunk[];
@@ -525,8 +564,11 @@ export async function mineConversation(options: ConvoMinerOptions): Promise<Conv
       detectedRoom: "general",
       assignedWing: explicitWing || "general",
       errors: [],
+      aborted: false,
     };
   }
+
+  checkAborted(options.signal);
 
   const wing = explicitWing || "general";
   const room = "general";
@@ -538,6 +580,8 @@ export async function mineConversation(options: ConvoMinerOptions): Promise<Conv
     topic: room,
     source: `${source}:exchange:${chunk.index}`,
   }));
+
+  checkAborted(options.signal);
 
   // Store via callback if provided
   let memoriesStored = 0;
@@ -559,5 +603,6 @@ export async function mineConversation(options: ConvoMinerOptions): Promise<Conv
     detectedRoom: room,
     assignedWing: wing,
     errors,
+    aborted: false,
   };
 }

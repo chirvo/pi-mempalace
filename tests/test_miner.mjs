@@ -200,6 +200,56 @@ async function defineTests() {
   });
 
   // -----------------------------------------------------------------------
+  // Abort signal / cancellation
+  // -----------------------------------------------------------------------
+
+  test("mineDirectory: aborts on signal before processing", async () => {
+    const dir = createTempDir();
+    try {
+      writeFile(dir, "a.ts", "const a = 1;");
+      writeFile(dir, "b.ts", "const b = 2;");
+
+      const controller = new AbortController();
+      controller.abort(); // Already aborted before we start
+
+      const result = await mineDirectory({
+        directory: dir,
+        wing: "test",
+        store: null,
+        signal: controller.signal,
+      });
+
+      assert.equal(result.aborted, true);
+      // Should not have processed any files
+      assert.equal(result.filesProcessed, 0);
+    } finally {
+      cleanupDir(dir);
+    }
+  });
+
+  test("mineConversation: pre-aborted signal throws", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    try {
+      await mineConversation({
+        text: "What is TypeScript?\n\nIt is a typed language.",
+        wing: "test",
+        store: null,
+        signal: controller.signal,
+      });
+      assert.fail("Should have thrown");
+    } catch (err) {
+      const msg = String(err);
+      assert.ok(
+        msg.includes("abort") || msg.includes("Abort") ||
+        msg.includes("cancel") || msg.includes("Cancel"),
+        `Expected abort/cancel error, got: ${msg}`
+      );
+    }
+  });
+
+  // -----------------------------------------------------------------------
   // mineConversation
   // -----------------------------------------------------------------------
 
