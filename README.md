@@ -22,6 +22,39 @@ This repository merges two independent pi-native implementations of the [MemPala
 
 ---
 
+## ✨ Features
+
+**From Jabbslad** —
+- Auto-capture on each conversation turn
+- Wake-up context (L0 identity + L1 essential story injected at session start)
+- Semantic vector search via sqlite-vec
+- Project/topic memory tagging
+- Knowledge graph with temporal triples (`valid_from` / `valid_to`)
+- Palace graph with cross-project tunnels
+- Agent diary (write/read across sessions)
+- TUI stats overlay (sparklines, bar charts)
+- SHA-256 deduplication
+- Local topic inference via flan-t5-small
+- All original tools: search, save, recall, status, graph, tunnel, knowledge, diary
+
+**From sinamtz** —
+- Paragraph-aware chunking with configurable target/max size and overlap
+- File directory mining (`.gitignore` awareness, 30+ source extensions, 1MB limit)
+- Binary file detection (null byte check + 10 magic byte signatures)
+- Conversation transcript import (Q+A exchange detection and paragraph modes)
+
+**Ours** —
+- Modular codebase (types.ts, utils.ts, chunker.ts, miner.ts, notifier.ts)
+- `batchStore` with 3-phase algorithm (dedup → batch embed → single-transaction insert)
+- AbortSignal cancellation for long-running mines
+- Multi-language conversation chunking (Spanish, Portuguese, Russian, German)
+- Content-aware topic detection (checks for test patterns, React imports, SQL, API decorators)
+- 106 tests (up from 51), all passing
+- Security audit findings resolved (no server, no subprocess, no credentials, parameterized SQL)
+- Bug fixes: infinite loop in long-paragraph split, `fs.readSync` return type, duplicate `ConvoMiningResult` interface, `MEMORY_DIR` duplication
+
+---
+
 ## 🚀 Install
 
 ```bash
