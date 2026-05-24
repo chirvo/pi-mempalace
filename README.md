@@ -18,7 +18,7 @@ This repository merges two independent pi-native implementations of the [MemPala
 | [🧠 **@sinamtz/pi-mempalace**](https://github.com/sinamtz/pi-mempalace) | **Sina Montazeri** | Paragraph-aware chunking with overlap, file directory mining (`.gitignore` awareness, binary detection, 30+ source extensions), conversation transcript import. |
 | [🏰 **MemPalace**](https://github.com/MemPalace/mempalace) | **Milla Jovovich & Ben Sigman** | The original palace metaphor and verbatim-storage philosophy that inspired both pi-native forks. |
 
-**Co-authored by [Irving A. Bermúdez S.](https://github.com/chirvo)** — security audit, modular refactor, TDD test suite (106 tests), batch embedding performance, AbortSignal cancellation, multi-language chunking (ES/PT/RU/DE), and issue triage.
+**Co-authored by [DeepSeek V4 Flash](https://deepseek.com)** — security audit, modular refactor, TDD test suite (106 tests), batch embedding performance, AbortSignal cancellation, multi-language chunking (ES/PT/RU/DE), and issue triage.
 
 ---
 
@@ -89,6 +89,28 @@ index.ts ─── MemoryStore ─── SQLite + sqlite-vec ─── memories.
 
 ---
 
+## 📊 LongMemEval Benchmark
+
+Results reproduced from [Jabbslad/pi-mempalace](https://github.com/Jabbslad/pi-mempalace) (identical values — same codebase):
+
+| Metric | Result | MemPalace (ref) | Delta |
+|--------|--------|-----------------|-------|
+| **Recall@5** | **95.8%** (479/500) | 96.6% | -0.8pp |
+| **Recall@10** | **98.2%** (491/500) | 98.2% | **identical** |
+| **NDCG@10** | **0.884** | 0.889 | -0.005 |
+
+Per-type: knowledge-update 100%, multi-session 97.7%, temporal-reasoning 94.7%, single-session-assistant 94.6%, single-session-user 92.9%, single-session-preference 90.0%.
+
+```bash
+# Full 500-question benchmark (~7 min)
+npx tsx benchmarks/longmemeval_bench.mjs
+
+# Quick smoke test (10 questions)
+npx tsx benchmarks/longmemeval_bench.mjs --limit 10
+```
+
+---
+
 ## 📜 License
 
 MIT
@@ -99,5 +121,5 @@ MIT
 🔧 Forked from <a href="https://github.com/Jabbslad/pi-mempalace">Jabbslad/pi-mempalace</a> by Jamie Slade &bull;
 🧬 Merged with ideas from <a href="https://github.com/sinamtz/pi-mempalace">sinamtz/pi-mempalace</a> by Sina Montazeri &bull;
 🏰 Inspired by <a href="https://github.com/MemPalace/mempalace">MemPalace</a> by Milla Jovovich & Ben Sigman &bull;
-✨ Co-authored by <a href="https://github.com/chirvo">Irving A. Bermúdez S.</a>
+✨ Co-authored by <a href="https://deepseek.com">DeepSeek V4 Flash</a>
 </p>
