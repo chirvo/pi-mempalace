@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.js
+*.d.ts
+*.map
+.DS_Store
+.pytest_cache/
+benchmarks/data/
+benchmarks/results/
