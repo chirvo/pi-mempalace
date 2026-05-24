@@ -345,7 +345,7 @@ function detectTopicFromPath(filePath: string, _content: string): string {
  * @param options - Mining options.
  * @returns Mining result with statistics.
  */
-export function mineDirectory(options: FileMinerOptions): FileMiningResult {
+export async function mineDirectory(options: FileMinerOptions): Promise<FileMiningResult> {
   const {
     directory,
     wing: explicitWing,
@@ -441,18 +441,21 @@ export function mineDirectory(options: FileMinerOptions): FileMiningResult {
 
   // Store via callback if provided
   if (store && allMemories.length > 0) {
-    // Process in batches of 10 to avoid overwhelming the store
     const BATCH_SIZE = 10;
+    let stored = 0;
     for (let i = 0; i < allMemories.length; i += BATCH_SIZE) {
       const batch = allMemories.slice(i, i + BATCH_SIZE);
-      store(batch).catch((err) => {
+      try {
+        await store(batch);
+        stored += batch.length;
+      } catch (err) {
         result.errors.push({
           file: "batch",
           error: `Store batch failed: ${String(err)}`,
         });
-      });
+      }
     }
-    result.memoriesStored = allMemories.length;
+    result.memoriesStored = stored;
   }
 
   return result;

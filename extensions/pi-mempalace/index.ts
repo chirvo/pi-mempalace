@@ -28,6 +28,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { MemoryStore } from "./memory_store.js";
+import { mineDirectory, mineConversation } from "./miner.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1375,6 +1376,182 @@ export default function memoryExtension(pi: ExtensionAPI) {
   });
 
   // -----------------------------------------------------------------------
+  // memory_mine_directory
+  // -----------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "memory_mine_directory",
+    label: "Mine Directory",
+    description:
+      "Scan a directory recursively, chunk code files, and store as searchable memories. " +
+      "Use after understanding a codebase to remember key architectural decisions and file locations. " +
+      "Respects .gitignore, skips binary and hidden files.",
+    promptSnippet:
+      "memory_mine_directory(directory?, project?) — recursively scan a codebase into memory",
+    promptGuidelines: [
+      "Use when the user asks you to 'learn' or 'understand' a codebase",
+      "Files are chunked by paragraph and tagged by topic (detected from extension + path)",
+      "The project name defaults to the directory basename",
+      "Binary, hidden, and gitignored files are automatically skipped",
+    ],
+    parameters: Type.Object({
+      directory: Type.Optional(
+        Type.String({ description: "Path to the directory to mine. Defaults to current working directory." })
+      ),
+      project: Type.Optional(
+        Type.String({ description: "Override the auto-detected project name." })
+      ),
+    }),
+
+    async execute(_toolCallId, params, _signal, onUpdate, ctx) {
+      const runtime = getRuntime(ctx);
+      const directory = params.directory || ctx.cwd;
+      const project = params.project || undefined;
+
+      onUpdate?.({
+        content: [{ type: "text", text: `Scanning ${directory}...` }],
+        details: { phase: "scanning" },
+      });
+
+      try {
+        const result = await mineDirectory({
+          directory,
+          wing: project,
+          source: `directory:${directory}`,
+          store: async (memories) => {
+            for (const m of memories) {
+              await runtime.store.store({
+                content: m.content,
+                project: m.project,
+                topic: m.topic,
+                source: m.source,
+              });
+            }
+          },
+        });
+
+        // Update cached counts
+        runtime.totalMemories += result.memoriesStored;
+        const status = runtime.store.status();
+        runtime.projects = status.projects;
+
+        const lines = [
+          "Directory mining complete:",
+          `Files scanned: ${result.filesScanned}`,
+          `Files processed: ${result.filesProcessed}`,
+          `Files skipped: ${result.filesSkipped}`,
+          `Chunks created: ${result.chunksCreated}`,
+          `Memories stored: ${result.memoriesStored}`,
+          result.errors.length > 0 ? `Errors: ${result.errors.length}` : "",
+        ].filter(Boolean);
+
+        return textResult(lines.join("\n"), {
+          filesScanned: result.filesScanned,
+          filesProcessed: result.filesProcessed,
+          filesSkipped: result.filesSkipped,
+          chunksCreated: result.chunksCreated,
+          memoriesStored: result.memoriesStored,
+          errorCount: result.errors.length,
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return textResult(`Directory mining failed: ${msg}`);
+      }
+    },
+
+    renderResult: renderTextResult,
+  });
+
+  // -----------------------------------------------------------------------
+  // memory_mine_conversation
+  // -----------------------------------------------------------------------
+
+  pi.registerTool({
+    name: "memory_mine_conversation",
+    label: "Mine Conversation",
+    description:
+      "Parse a conversation transcript into Q+A exchange pairs and store as memories. " +
+      "Good for importing past conversations, chat exports, or meeting notes. " +
+      "Supports exchange-pair mode (default) and paragraph mode.",
+    promptSnippet:
+      "memory_mine_conversation(text, project?, mode?) — import conversation transcript into memory",
+    promptGuidelines: [
+      "Use when the user provides an exported conversation or chat log to import",
+      "Exchange mode detects Q+A pairs using question indicators and speaker patterns",
+      "Paragraph mode chunks by paragraph boundaries",
+      "Short exchanges (<10 chars) are filtered out automatically",
+    ],
+    parameters: Type.Object({
+      text: Type.String({ description: "The conversation transcript text to mine." }),
+      project: Type.Optional(
+        Type.String({ description: "Project name. Defaults to current project." })
+      ),
+      mode: Type.Optional(
+        Type.String({
+          description: "Chunking mode: 'exchanges' (default) or 'paragraphs'.",
+          default: "exchanges",
+        })
+      ),
+    }),
+
+    async execute(_toolCallId, params, _signal, onUpdate, ctx) {
+      const runtime = getRuntime(ctx);
+      const mode = (params.mode === "paragraphs" ? "paragraphs" : "exchanges") as "exchanges" | "paragraphs";
+
+      onUpdate?.({
+        content: [{ type: "text", text: "Parsing conversation..." }],
+        details: { phase: "parsing" },
+      });
+
+      try {
+        const result = await mineConversation({
+          text: params.text,
+          wing: params.project || runtime.currentProject,
+          source: "conversation-import",
+          mode,
+          store: async (memories) => {
+            for (const m of memories) {
+              await runtime.store.store({
+                content: m.content,
+                project: m.project,
+                topic: m.topic,
+                source: m.source,
+              });
+            }
+          },
+        });
+
+        // Update cached counts
+        runtime.totalMemories += result.memoriesStored;
+        const status = runtime.store.status();
+        runtime.projects = status.projects;
+
+        const lines = [
+          "Conversation mining complete:",
+          `Exchanges found: ${result.exchangesFound}`,
+          `Chunks created: ${result.chunksCreated}`,
+          `Memories stored: ${result.memoriesStored}`,
+          result.errors.length > 0 ? `Errors: ${result.errors.length}` : "",
+        ].filter(Boolean);
+
+        return textResult(lines.join("\n"), {
+          exchangesFound: result.exchangesFound,
+          chunksCreated: result.chunksCreated,
+          memoriesStored: result.memoriesStored,
+          detectedRoom: result.detectedRoom,
+          assignedWing: result.assignedWing,
+          errorCount: result.errors.length,
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return textResult(`Conversation mining failed: ${msg}`);
+      }
+    },
+
+    renderResult: renderTextResult,
+  });
+
+  // -----------------------------------------------------------------------
   // Commands
   // -----------------------------------------------------------------------
 
@@ -1511,16 +1688,27 @@ export default function memoryExtension(pi: ExtensionAPI) {
           break;
         }
 
+        case "mine": {
+          const dirArg = parts.slice(1).join(" ") || ctx.cwd;
+          pi.sendUserMessage(`Mine directory: ${dirArg}`);
+          break;
+        }
+
+        case "import": {
+          pi.sendUserMessage("Import a conversation transcript into memory. Paste the text and I'll call memory_mine_conversation.");
+          break;
+        }
+
         default: {
           ctx.ui.notify(
-            "Usage: /memory [status|stats|project|search|graph|knowledge|rooms|taxonomy|diary|timeline|topics on|topics off|on|off]",
+            "Usage: /memory [status|stats|project|search|graph|knowledge|rooms|taxonomy|diary|timeline|topics on|topics off|mine|import|on|off]",
             "info"
           );
         }
       }
     },
     getArgumentCompletions: (prefix) => {
-      const commands = ["status", "stats", "project", "search", "graph", "knowledge", "rooms", "taxonomy", "diary", "timeline", "topics", "on", "off"];
+      const commands = ["status", "stats", "project", "search", "graph", "knowledge", "rooms", "taxonomy", "diary", "timeline", "topics", "mine", "import", "on", "off"];
       return commands
         .filter((c) => c.startsWith(prefix))
         .map((c) => ({ label: c, value: c, type: "text" as const }));
