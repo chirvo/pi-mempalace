@@ -2,7 +2,7 @@
 
 **Your AI forgot everything again. How delightful.**
 
-Every conversation you've ever had with an AI — every architectural decision, every late-night debugging eureka, every "let's use Postgres because..." — *poof*. Gone the moment you close the tab. Your AI has the long-term memory of a goldfish at a rave.
+Every conversation you've ever had with an AI — every architectural decision, every late-night debugging eureka, every "let's use Postgres because..." — *poof*. Gone the moment you close the tab.
 
 **pi-mempalace fixes that.** It gives [pi](https://github.com/badlogic/pi-mono) agents persistent, cross-session memory. Save important context, search it later, and stop re-explaining your life choices to a machine.
 
@@ -10,331 +10,94 @@ Every conversation you've ever had with an AI — every architectural decision, 
 
 ## 🧬 Fork & Credits
 
-This repository is a **merge of two independent pi-native implementations** of the MemPalace concept, combining their strengths into a single, well-tested codebase:
+This repository merges two independent pi-native implementations of the [MemPalace](https://github.com/MemPalace/mempalace) concept:
 
 | Source | Author | Contribution |
 |--------|--------|-------------|
-| [🚀 **Jabbslad/pi-mempalace**](https://github.com/Jabbslad/pi-mempalace) | **Jamie Slade** | Original pi-native implementation — SQLite + sqlite-vec backend, auto-capture, knowledge graph, palace graph, agent diary, wake-up context, TUI stats overlay, and the 4-layer memory stack. This repo is forked from Jabbslad's work and retains his architectural foundation. |
-| [🧠 **@sinamtz/pi-mempalace**](https://github.com/sinamtz/pi-mempalace) | **Sina Montazeri** | Ideas and code ported from this fork: paragraph-aware chunking with overlap, file directory mining (`.gitignore` awareness, binary detection, 30+ source extensions), conversation transcript import (Q+A exchange detection), auto-server SurrealDB pattern (evaluated and rejected in favor of SQLite for security/simplicity), and the layered retrieval protocol concepts. |
-| [🏰 **MemPalace**](https://github.com/MemPalace/mempalace) | **Milla Jovovich & Ben Sigman** | The original palace metaphor (wings, rooms, tunnels), the verbatim-storage philosophy, the 4-layer retrieval stack, and LongMemEval benchmark validation. Both pi-native implementations are directly inspired by this project. |
+| [🚀 **Jabbslad/pi-mempalace**](https://github.com/Jabbslad/pi-mempalace) | **Jamie Slade** | Original pi-native implementation — SQLite + sqlite-vec backend, auto-capture, knowledge graph, palace graph, agent diary, wake-up context, TUI stats, and the 4-layer memory stack. This repo is forked from Jabbslad's work. |
+| [🧠 **@sinamtz/pi-mempalace**](https://github.com/sinamtz/pi-mempalace) | **Sina Montazeri** | Paragraph-aware chunking with overlap, file directory mining (`.gitignore` awareness, binary detection, 30+ source extensions), conversation transcript import. |
+| [🏰 **MemPalace**](https://github.com/MemPalace/mempalace) | **Milla Jovovich & Ben Sigman** | The original palace metaphor and verbatim-storage philosophy that inspired both pi-native forks. |
 
-**The current repository is co-authored by [Irving A. Bermúdez S.](https://github.com/chirvo)** — who forked Jabbslad's work, ported features from sinamtz's fork, and performed the security audit, modular refactor, TDD test suite, and issue triage documented below.
-
----
-
-## 🏰 Standing on the Shoulders of a Memory Palace
-
-This whole lineage traces back to the wonderful [MemPalace](https://github.com/MemPalace/mempalace) — built by **Milla Jovovich** (yes, *that* Milla Jovovich — Leeloo from *The Fifth Element*, Alice from *Resident Evil*) and developer **Ben Sigman**.
-
-> **Official MemPalace sources:** [github.com/MemPalace/mempalace](https://github.com/MemPalace/mempalace), [PyPI](https://pypi.org/project/mempalace/), and [mempalaceofficial.com](https://mempalaceofficial.com). Avoid unofficial MemPalace domains.
-
-Milla's origin story is painfully relatable: after thousands of conversations with AI, she realized every new session was a clean slate. All her decisions, reasoning, creative ideas — thrown into the void. Existing memory tools like Mem0 and Zep tried to help, but they had a fatal flaw: they used AI to decide what was worth remembering. The nuance, the "why," the reasoning behind decisions — exactly the stuff that matters — was the first to go.
-
-So Milla and Ben spent months building MemPalace with Claude Code, and landed on a beautifully simple idea:
-
-> **Don't let AI decide what to forget — store everything, then make it findable.**
-
-Their MemPalace scored **96.6% R@5 on LongMemEval** in raw mode with zero API calls. Current MemPalace also reports stronger hybrid retrieval results, while its maintainers now avoid headline claims that mix retrieval recall with end-to-end QA accuracy.
-
-pi-mempalace takes that core philosophy — **verbatim storage + semantic search** — and reimagines it as a native [pi](https://github.com/badlogic/pi-mono) extension. No Python. No ChromaDB. No pip install nightmares. Just pure TypeScript running in-process, fast enough to forget that forgetting was ever a problem.
-
----
-
-## ✨ What It Does
-
-- **🔄 Auto-capture** — Each Pi conversation exchange is stored automatically after each turn. Auto-captured exchanges are capped at 2,000 characters to keep storage cheap; manual saves can store longer content, which is chunked for search.
-- **🌅 Wake-up context** — Each new session starts with a whisper of who you are and what you've been up to (~600-900 tokens of "previously on your life").
-- **🔍 Semantic search** — Find past decisions by *meaning*, not keywords. "Why did we pick that database?" just works.
-- **📁 Project-aware** — Memories are tagged by project (auto-detected from your directory) and topic. Auto-capture and untitled manual saves use local `flan-t5-small` for a durable topic label, falling back to `general` if inference is unavailable.
-- **🏠 Local-first** — Storage, embeddings, search, and topic inference run in-process via HuggingFace models + SQLite. Topic inference never calls Pi's selected LLM and can be disabled with `/memory topics off`.
-- **📊 Beautiful stats** — Sparkline activity charts, bar graphs by project/topic, and a TUI overlay that makes you feel like a hacker in a 90s movie.
+**Co-authored by [Irving A. Bermúdez S.](https://github.com/chirvo)** — security audit, modular refactor, TDD test suite (106 tests), batch embedding performance, AbortSignal cancellation, multi-language chunking (ES/PT/RU/DE), and issue triage.
 
 ---
 
 ## 🚀 Install
 
 ```bash
-# Install from GitHub
 pi install git:github.com/chirvo/pi-mempalace
-
-# Or from a local checkout
-pi install /path/to/pi-mempalace
 ```
 
-That's it. `pi install` runs `npm install` automatically, which pulls in all three runtime dependencies:
-
-| Dependency | What It Does | Native? |
-|-----------|-------------|--------|
-| `@huggingface/transformers` | Local embeddings (`all-MiniLM-L6-v2`) and topic labels (`flan-t5-small`) | No — pure JS, downloads models on first use |
-| `better-sqlite3` | SQLite database access | Yes — compiles native addon via `node-gyp` |
-| `sqlite-vec` | Vector similarity search for SQLite | Yes — ships prebuilt binary per platform |
-
-No Python. No conda. No Docker. No ChromaDB server. Topic inference is local and does not use Pi model/auth; storage and search need no separate API keys. No sacrificial offerings to the dependency gods.
-
-### Prerequisites
-
-- **Node.js** (required by pi)
-- **C++ toolchain** for `better-sqlite3`'s native build:
-  - macOS: `xcode-select --install`
-  - Linux: `sudo apt install build-essential` (or equivalent)
-  - Windows: Visual Studio Build Tools
-
-Most dev machines already have this. If `pi install` fails with gyp errors, that's the fix.
+Dependencies: `@huggingface/transformers` (embeddings + topic labels), `better-sqlite3` (SQLite), `sqlite-vec` (vector search). No Python, no Docker, no external servers.
 
 ---
 
 ## 🎮 Quick Start
 
 ```bash
-# Set up your identity and verify everything works
-/skill:memory-setup
-
-# Explicitly save something important
-memory_save("We chose PostgreSQL for concurrent write support", project: "myapp", topic: "database")
-
-# Search later, when you've inevitably forgotten
-memory_search("why did we pick the database?")
-
-# Browse a project's collected wisdom
-memory_recall(project: "myapp")
-
-# Check on your growing brain
-memory_status()
+/skill:memory-setup                                    # set up identity
+memory_save("We chose PostgreSQL for concurrent writes", project: "myapp", topic: "database")
+memory_search("why did we pick that database?")         # semantic search
+memory_recall(project: "myapp")                         # browse by project
+memory_mine_directory(directory: "~/code/myapp")        # scan codebase into memory
+memory_mine_conversation(text: "Q: What DB? A: PG")     # import chat transcripts
+memory_status()                                          # overview
 ```
-
-### Configuration
-
-Config is stored at `~/.pi/agent/memory/config.json`:
-
-```json
-{
-  "autoCapture": true,
-  "wakeUpEnabled": true,
-  "wakeUpMaxTokens": 800,
-  "topicInferenceEnabled": true,
-  "defaultProject": null
-}
-```
-
-Local topic inference loads `Xenova/flan-t5-small` on first use when auto-capturing a turn or saving a memory without an explicit topic. It does not call Pi's selected LLM or any paid model API. Toggle it with `/memory topics on` or `/memory topics off`.
 
 ---
 
-## 🧰 Tools
+## 🧰 Tools (18 total)
 
-### Memory Tools
-| Tool | What It Does |
-|------|-------------|
-| `memory_search` | Semantic search across all stored memories — find things by meaning |
-| `memory_save` | Explicitly save important info — for those "remember this" moments |
-| `memory_recall` | Browse memories by project/topic — like flipping through a journal |
-| `memory_status` | Memory store overview — how big is your brain now? |
-
-### Palace Graph Tools
-| Tool | What It Does |
-|------|-------------|
-| `memory_graph` | Visualize the palace — projects as wings, shared topics as tunnel connections |
-| `memory_tunnel` | Traverse a tunnel between two projects via a shared topic |
-
-### Knowledge Graph Tools
-| Tool | What It Does |
-|------|-------------|
-| `knowledge_add` | Add structured facts — "myapp uses PostgreSQL since 2025-01" |
-| `knowledge_query` | Query facts about an entity, with temporal filtering — "what did we use in 2024?" |
-| `knowledge_status` | Knowledge graph stats — entities, facts, predicates |
+| Tool | Purpose |
+|------|---------|
+| `memory_search` | Semantic vector search |
+| `memory_save` | Explicit save |
+| `memory_recall` | Browse by project/topic |
+| `memory_status` | Overview |
+| `memory_graph` | Palace graph (cross-project tunnels) |
+| `memory_tunnel` | Traverse shared topic between projects |
+| `memory_list_rooms` / `memory_taxonomy` | Browse organization |
+| `memory_delete` / `memory_check_duplicate` | Manage memories |
+| `knowledge_add` / `query` / `status` / `invalidate` / `timeline` | Knowledge graph CRUD |
+| `memory_diary_write` / `diary_read` | Agent diary |
+| **`memory_mine_directory`** | Recursive codebase scan (.gitignore, binary detection, 30+ extensions) |
+| **`memory_mine_conversation`** | Import chat transcripts (exchanges or paragraphs) |
 
 ## ⌨️ Commands
 
-| Command | What It Does |
-|---------|-------------|
-| `/memory status` | Quick status overview |
-| `/memory stats` | Full stats overlay with sparklines and bar charts |
-| `/memory project <name>` | Set current project context |
-| `/memory search <query>` | Quick search shortcut |
-| `/memory graph` | Show palace graph with cross-project connections |
-| `/memory knowledge <entity>` | Query knowledge graph for an entity |
-| `/memory on` / `off` | Enable/disable memory (for those private moments) |
+`/memory status` `/memory stats` `/memory project <name>` `/memory search <query>` `/memory graph` `/memory knowledge <entity>` `/memory mine` `/memory import` `/memory on` `/memory off`
 
 ---
 
 ## 🏗️ Architecture
 
-Inspired by the [MemPalace](https://github.com/MemPalace/mempalace) 4-layer memory stack:
-
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  L0: IDENTITY (~100 tokens)                             │
-│  Always loaded. ~/.pi/agent/memory/identity.txt         │
-├─────────────────────────────────────────────────────────┤
-│  L1: ESSENTIAL STORY (~500-800 tokens)                  │
-│  Top 15 memories by importance + recency.               │
-│  Grouped by project. Injected at session start.         │
-├─────────────────────────────────────────────────────────┤
-│  L2: ON-DEMAND PROJECT CONTEXT                          │
-│  Filtered by project/topic via SQL indexes.             │
-│  Loaded only when you ask about a specific area.        │
-├─────────────────────────────────────────────────────────┤
-│  L3: DEEP SEMANTIC SEARCH                               │
-│  Full vector similarity via sqlite-vec ANN index.       │
-│  Searches 100K+ memories in milliseconds.               │
+│  L0: IDENTITY (~100 tokens) — always loaded from file  │
+│  L1: ESSENTIAL STORY (~500-800t) — top 15 by importance│
+│  L2: ON-DEMAND PROJECT CONTEXT — filtered by SQL index │
+│  L3: DEEP SEMANTIC SEARCH — sqlite-vec ANN index       │
 └─────────────────────────────────────────────────────────┘
+
+index.ts ─── MemoryStore ─── SQLite + sqlite-vec ─── memories.db
+              (in-process, no subprocesses, no network)
 ```
 
-```
-pi (TypeScript — everything in-process)
-┌────────────────────────────────────────────────────────────┐
-│ extensions/pi-mempalace/                                   │
-│                                                            │
-│  index.ts                         memory_store.ts          │
-│  ┌──────────────────────┐         ┌─────────────────────┐  │
-│  │ turn_end             │         │ MemoryStore         │  │
-│  │   auto-capture       │ ──────▶ │ SQLite + sqlite-vec │  │
-│  │ before_agent_start   │ ◀────── │ ANN vector search   │  │
-│  │   L0 + L1 inject     │         │ Metadata indexes    │  │
-│  │ Tools + Commands     │         │ WAL mode            │  │
-│  │ Stats TUI overlay    │         │                     │  │
-│  └──────────────────────┘         │ ~/.pi/agent/memory/ │  │
-│                                   │   memories.db       │  │
-│                                   └─────────────────────┘  │
-│                                                            │
-│  @huggingface/transformers                                 │
-│    all-MiniLM-L6-v2 (384 dimensions)                       │
-│                                                            │
-│  better-sqlite3 + sqlite-vec                               │
-│    Indexed storage + vector similarity search              │
-└────────────────────────────────────────────────────────────┘
-```
+**Performance** (Apple Silicon): store 1ms, search 100 memories 1ms, wakeup <1ms, model load ~200ms (one-time).
 
-### ⚡ Performance
-
-Benchmarked on Apple Silicon (M-series). Your mileage may vary, but it'll be fast.
-
-| Operation | Time | Vibes |
-|-----------|------|-------|
-| Model load (first store) | ~200ms | ☕ One-time cost per session |
-| Store 1 memory (warm, explicit topic) | ~1ms | ⚡ Blink and you'll miss it |
-| Infer topic (when enabled) | Local `flan-t5-small` call | 🏷️ Better rooms, no paid LLM call |
-| Search 100 memories | ~1ms | 🚀 Faster than you can forget |
-| Wakeup L0+L1 | <1ms | 🌅 Instant dawn |
-| Recall L2 (filtered) | <1ms | 🎯 SQL indexes go brrr |
-| Knowledge graph query | <1ms | 🧩 Basically free |
-| Palace graph | <1ms | 🏰 All the tunnels, no waiting |
-
-### 💾 Storage
-
-Memories live in a SQLite database at `~/.pi/agent/memory/memories.db`, powered by [sqlite-vec](https://github.com/asg017/sqlite-vec) for vector similarity search. Metadata is indexed (project, topic, timestamp) for fast pre-filtering before vector search kicks in. Deduplication via SHA-256 hash means you can't accidentally remember the same thing twice — unlike that embarrassing story you keep retelling at parties.
-
-> **Migrating from v0.1?** If you have an existing `memories.jsonl` file, it's automatically migrated to SQLite on first load. Your old file is renamed to `.bak`. No data lost, no action needed.
-
----
-
-## 🏰 MemPalace Concepts in pi-mempalace
-
-The original [MemPalace](https://github.com/MemPalace/mempalace) uses a richer architecture — **Wings** (top-level containers), **Rooms** (topics), **Halls** (corridors by memory type), **Closets** (searchable pointer layers), and **Drawers** (verbatim source files). It runs on Python with ChromaDB by default and includes AAAK, an experimental lossy compression dialect.
-
-pi-mempalace implements a Pi-native subset of those ideas in TypeScript:
-
-| MemPalace Concept | pi-mempalace Implementation |
-|---|---|
-| **Wings** (projects/people) | `project` field — auto-detected from git repo |
-| **Rooms** (topics within wings) | `topic` field — explicit or inferred locally with `flan-t5-small` |
-| **Drawers** (verbatim chunks) | 800-char chunks with 100-char overlap, each with its own embedding |
-| **Tunnels** (cross-wing connections) | `memory_graph` discovers shared topics across projects |
-| **4-Layer Stack** | L0 Identity → L1 Essential Story → L2 On-Demand → L3 Deep Search |
-| **Knowledge Graph** | Temporal triples with `valid_from`/`valid_to` — "what was true when?" |
-| **ChromaDB** | SQLite + [sqlite-vec](https://github.com/asg017/sqlite-vec) — local vector search, no Python |
-
-This plugin deliberately skips several current MemPalace features: AAAK compression, closets, file/conversation mining, source adapters, hook management, repair/migration tools, and hybrid BM25 reranking.
-
-The soul is the same: **your AI should remember you.**
-
-If you want the full palace experience with all its wings, halls, closets, drawers, importers, and repair tooling, use the official [MemPalace project](https://github.com/MemPalace/mempalace). Milla and Ben built something special.
-
----
-
-## 📊 Benchmark Validation
-
-We reproduce [LongMemEval](https://arxiv.org/abs/2410.10813) raw retrieval to validate this plugin's local semantic search. The benchmark stores 500 questions, each with ~50 timestamped conversation sessions, and measures whether the correct session appears in the top-K search results.
-
-### Results (Raw Mode — Zero API, Fully Local)
-
-| Metric | pi-mempalace | MemPalace (reference) | Delta |
-|--------|-------------|----------------------|-------|
-| **Recall@5** | **95.8%** (479/500) | 96.6% (483/500) | -0.8pp |
-| **Recall@10** | **98.2%** (491/500) | 98.2% (491/500) | **identical** |
-| **NDCG@10** | **0.884** | 0.889 | -0.005 |
-
-### Per Question Type
-
-| Question Type | R@5 | R@10 | Questions |
-|--------------|-----|------|-----------|
-| knowledge-update | 🟢 100% | 100% | 78 |
-| multi-session | 🟢 97.7% | 98.5% | 133 |
-| temporal-reasoning | 🟡 94.7% | 99.2% | 133 |
-| single-session-assistant | 🟡 94.6% | 96.4% | 56 |
-| single-session-user | 🟡 92.9% | 95.7% | 70 |
-| single-session-preference | 🟡 90.0% | 96.7% | 30 |
-
-The 0.8pp R@5 gap comes from our 800-char chunking and differences between sqlite-vec and ChromaDB retrieval. The weakest categories (temporal, preference) are exactly what current MemPalace hybrid modes address with keyword re-ranking and temporal boosting — features this plugin has not implemented.
-
-### Run It Yourself
-
-```bash
-# Download the LongMemEval dataset (~277MB)
-curl -fsSL -o benchmarks/data/longmemeval_s_cleaned.json \
-  https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json
-
-# Run full benchmark (500 questions, ~4 minutes)
-npx tsx benchmarks/longmemeval_bench.mjs
-
-# Quick smoke test (10 questions, ~5 seconds)
-npx tsx benchmarks/longmemeval_bench.mjs --limit 10
-
-# Save per-question results
-npx tsx benchmarks/longmemeval_bench.mjs --out benchmarks/results/raw_500.jsonl
-```
-
----
-
-## 🤔 Why Not Just Use MemPalace Directly?
-
-You absolutely could! MemPalace is great. But if you're already living in the pi ecosystem:
-
-- **No Python required** — pi-mempalace is pure TypeScript, runs in-process
-- **Pi-native MemPalace-inspired subset** — 4-layer wake-up/search model, chunking, palace graph, knowledge graph
-- **SQLite instead of ChromaDB** — one file, no server, native Node.js via better-sqlite3
-- **Palace graph with tunnels** — discover cross-project connections via shared topics
-- **Temporal knowledge graph** — structured facts with time validity ("what was true when?")
-- **Auto-chunking** — long content split into 800-char chunks with overlap, just like MemPalace
-- **Native pi integration** — hooks into pi's extension system, session lifecycle, and TUI
-- **Auto-capture built in** — short Pi exchanges are captured automatically; use `memory_save` for explicit durable notes
-- **Wake-up context** — L0 identity + L1 essential story, injected before you even ask
-- **Zero config** — install it and go. Topic labels use local `flan-t5-small` by default, or `/memory topics off` to keep auto-captures in `general`.
+**Storage:** `~/.pi/agent/memory/memories.db` (SQLite, WAL mode). Auto-migration from legacy JSONL.
 
 ---
 
 ## 📜 License
 
-MIT — because memories should be free.
+MIT
 
 ---
 
 <p align="center">
-  <i>
-    "I wanted my AI to remember the way I remember — not just the conclusions, but the journey."
-    <br/>
-    — The philosophy behind MemPalace, which inspired this project
-  </i>
-</p>
-
-<p align="center">
-  🏰 Inspired by <a href="https://github.com/MemPalace/mempalace">MemPalace</a> by Milla Jovovich & Ben Sigman
-  <br/>
-  🧠 Built for <a href="https://github.com/badlogic/pi-mono">pi</a> with ❤️ and a fear of forgetting
-  <br/>
-  🔧 Forked from <a href="https://github.com/Jabbslad/pi-mempalace">Jabbslad/pi-mempalace</a> by Jamie Slade
-  <br/>
-  🧬 Merged with ideas from <a href="https://github.com/sinamtz/pi-mempalace">sinamtz/pi-mempalace</a> by Sina Montazeri
-  <br/>
-  ✨ Co-authored by <a href="https://github.com/chirvo">Irving A. Bermúdez S.</a>
+🔧 Forked from <a href="https://github.com/Jabbslad/pi-mempalace">Jabbslad/pi-mempalace</a> by Jamie Slade &bull;
+🧬 Merged with ideas from <a href="https://github.com/sinamtz/pi-mempalace">sinamtz/pi-mempalace</a> by Sina Montazeri &bull;
+🏰 Inspired by <a href="https://github.com/MemPalace/mempalace">MemPalace</a> by Milla Jovovich & Ben Sigman &bull;
+✨ Co-authored by <a href="https://github.com/chirvo">Irving A. Bermúdez S.</a>
 </p>
