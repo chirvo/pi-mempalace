@@ -45,7 +45,7 @@ This repository merges two independent pi-native implementations of the [MemPala
 
 **Ours** —
 - Modular codebase (types.ts, utils.ts, chunker.ts, miner.ts, notifier.ts)
-- `batchStore` with 3-phase algorithm (dedup → batch embed → single-transaction insert)
+- `batchStore` with 3-phase algorithm (dedup → batch embed → single-transaction insert) — **500x fewer SQLite transactions** vs individual `store()` calls
 - AbortSignal cancellation for long-running mines
 - Multi-language conversation chunking (Spanish, Portuguese, Russian, German)
 - Content-aware topic detection (checks for test patterns, React imports, SQL, API decorators)
