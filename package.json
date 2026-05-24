@@ -27,6 +27,7 @@
   "dependencies": {
     "@huggingface/transformers": "^4.0.1",
     "better-sqlite3": "^12.9.0",
+    "ignore": "^7.0.5",
     "sqlite-vec": "^0.1.6"
   },
   "peerDependencies": {
