@@ -587,7 +587,7 @@ export default function memoryExtension(pi: ExtensionAPI) {
         let text = `Found ${result.results.length} memories for "${params.query}":\n\n`;
         for (const hit of result.results) {
           const sim = (hit.similarity * 100).toFixed(1);
-          text += `[${hit.project}/${hit.topic}] (${sim}% match, ${hit.timestamp})\n`;
+          text += `[${hit.project}/${hit.topic}] (ID: ${hit.id}, ${sim}% match, ${hit.timestamp})\n`;
           text += `${hit.text}\n\n---\n\n`;
         }
 
@@ -712,7 +712,7 @@ export default function memoryExtension(pi: ExtensionAPI) {
         text += ":\n\n";
 
         for (const item of result.results) {
-          text += `[${item.project}/${item.topic}] (${item.timestamp})\n`;
+          text += `[${item.project}/${item.topic}] (ID: ${item.id}, ${item.timestamp})\n`;
           text += `${item.text}\n\n---\n\n`;
         }
 
@@ -872,7 +872,7 @@ export default function memoryExtension(pi: ExtensionAPI) {
         
         let text = `## \uD83D\uDD17 Tunnel: ${params.project_a} \u2194 ${params.project_b} via "${params.topic}"\n\n`;
         for (const item of results) {
-          text += `[${item.project}/${item.topic}] (${item.timestamp})\n`;
+          text += `[${item.project}/${item.topic}] (ID: ${item.id}, ${item.timestamp})\n`;
           text += `${item.text}\n\n---\n\n`;
         }
         
