@@ -524,6 +524,13 @@ export default function memoryExtension(pi: ExtensionAPI) {
     if (!runtime.enabled || !runtime.config.wakeUpEnabled) return;
     if (!runtime.wakeUpText) return;
 
+    const gtDirective =
+      "\n\n## Ground Truth Directive\n" +
+      "Context injected below (Identity, Essential Story) is AUTHORITATIVE.\n" +
+      "Do NOT re-search for information already provided here.\n" +
+      "Priority: GT1 (identity) > GT2 (essential story) > GT3 (project context) > GT4 (search results).\n" +
+      "If search results and injected context conflict, trust the injected context.\n";
+
     const extra =
       "\n\n## Agent Memory (ACTIVE)\n" +
       "You have persistent memory across sessions. Previous conversations and decisions are stored and searchable.\n" +
@@ -533,7 +540,11 @@ export default function memoryExtension(pi: ExtensionAPI) {
       "Use `knowledge_add` to record structured facts. Use `knowledge_query` to query them.\n" +
       "Use `knowledge_invalidate` to mark facts as no longer true. Use `knowledge_timeline` for chronological history.\n" +
       "Use `memory_diary_write` to record reflections. Use `memory_diary_read` to review past entries.\n" +
-      "Use `memory_delete` to remove specific memories. Use `memory_check_duplicate` before storing.\n\n" +
+      "Use `memory_delete` to remove specific memories. Use `memory_check_duplicate` before storing.\n" +
+      "Use `knowledge_feedback` to rate facts as correct or incorrect.\n" +
+      "Use `memory_gt` to view the Ground Truth hierarchy.\n" +
+      "Use `memory_decay_scan` to clean up stale memories and expired facts.\n\n" +
+      gtDirective + "\n" +
       runtime.wakeUpText;
 
     return {
@@ -1286,6 +1297,126 @@ export default function memoryExtension(pi: ExtensionAPI) {
     renderResult: renderTextResult,
   });
 
+  // --- knowledge_feedback ---
+  pi.registerTool({
+    name: "knowledge_feedback",
+    label: "Knowledge Feedback",
+    description:
+      "Record whether a knowledge graph fact was correct or incorrect. " +
+      "Positive feedback (+0.1 trust), negative feedback (-0.15 trust). " +
+      "Use after decisions to train the trust scoring system.",
+    promptSnippet:
+      "knowledge_feedback(triple_id, positive) — rate a fact's correctness to train trust scores",
+    promptGuidelines: [
+      "Use after citing a knowledge graph fact in a decision",
+      "If the fact was correct, set positive: true (+0.1)",
+      "If the fact was incorrect or stale, set positive: false (-0.15)",
+      "Low-trust facts (<0.3) are flagged as 'unverified' in searches",
+    ],
+    parameters: Type.Object({
+      triple_id: Type.Number({ description: "The ID of the triple to provide feedback for" }),
+      positive: Type.Boolean({ description: "Whether the fact was correct (true) or incorrect (false)" }),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const runtime = getRuntime(ctx);
+      try {
+        runtime.store.knowledgeFeedback(params.triple_id, params.positive);
+        const action = params.positive ? "correct (+0.1 trust)" : "incorrect (-0.15 trust)";
+        return textResult(
+          `\u2705 Feedback recorded: triple #${params.triple_id} marked as ${action}`,
+          { triple_id: params.triple_id, positive: params.positive }
+        );
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return textResult(`Feedback failed: ${msg}`);
+      }
+    },
+    renderResult: renderTextResult,
+  });
+
+  // --- memory_gt ---
+  pi.registerTool({
+    name: "memory_gt",
+    label: "Ground Truth Hierarchy",
+    description:
+      "Show the Ground Truth hierarchy — the priority levels that determine which context to trust. " +
+      "When injected context and search results conflict, this hierarchy tells the agent what to believe.",
+    promptSnippet: "memory_gt() — view the Ground Truth hierarchy and priority levels",
+    promptGuidelines: [
+      "Use when you need to understand why certain context is trusted over others",
+      "Shows GT1 (identity) through GT5 (graph results) priority levels",
+    ],
+    parameters: Type.Object({}),
+
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const text = [
+        "## \uD83C\uDF1F Ground Truth Hierarchy",
+        "",
+        "**GT1 — Identity (L0):** Never override, never search for. Always authoritative.",
+        "**GT2 — Essential Story (L1):** Never search for, use as-is. Injected at session start.",
+        "**GT3 — Project Context (L2):** Use as-is unless contradicted by GT1/GT2.",
+        "**GT4 — Search Results (L3):** Fill gaps only. Never contradict GT1-GT3.",
+        "**GT5 — Graph Query Results (L4):** Structure reference only. Lowest priority.",
+        "",
+        "**Directive:** When injected context and search results conflict, trust the injected context.",
+        "Do not re-search for information already provided.",
+      ].join("\n");
+      return textResult(text);
+    },
+    renderResult: renderTextResult,
+  });
+
+  // --- memory_decay_scan ---
+  pi.registerTool({
+    name: "memory_decay_scan",
+    label: "Memory Decay Scan",
+    description:
+      "Run a decay scan on the memory store. " +
+      "Archives old, low-importance memories. " +
+      "Flags expired facts (low trust scores with many refutations). " +
+      "Use periodically to keep memory store healthy.",
+    promptSnippet:
+      "memory_decay_scan(maxAgeDays?, minImportance?) — clean up stale memories and expired facts",
+    promptGuidelines: [
+      "Run monthly to keep memory store healthy",
+      "Default: archives memories older than 180 days with importance < 0.5",
+      "Flags facts with trust_score < 0.1 and more than 5 feedback updates",
+      "Archived memories are hidden from search/recall but still in the database",
+    ],
+    parameters: Type.Object({
+      maxAgeDays: Type.Optional(
+        Type.Number({ description: "Archive memories older than this many days (default: 180)" })
+      ),
+      minImportance: Type.Optional(
+        Type.Number({ description: "Archive memories with importance below this threshold (default: 0.5)" })
+      ),
+      semanticDedupThreshold: Type.Optional(
+        Type.Number({ description: "Merge memories with Jaccard similarity above this (default: 0.92). Set to 0 to disable." })
+      ),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const runtime = getRuntime(ctx);
+      try {
+        const result = runtime.store.decayScan({
+          maxAgeDays: params.maxAgeDays,
+          minImportance: params.minImportance,
+          semanticDedupThreshold: params.semanticDedupThreshold,
+        });
+        return textResult(result.summary, {
+          archived: result.archived.length,
+          expired_facts: result.expired_facts.length,
+          merged: result.merged.reduce((sum, m) => sum + m.from.length, 0),
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return textResult(`Decay scan failed: ${msg}`);
+      }
+    },
+    renderResult: renderTextResult,
+  });
+
   // --- memory_diary_write ---
   pi.registerTool({
     name: "memory_diary_write",
@@ -1686,6 +1817,24 @@ export default function memoryExtension(pi: ExtensionAPI) {
           break;
         }
 
+        case "gt": {
+          pi.sendUserMessage("Show the Ground Truth hierarchy");
+          break;
+        }
+
+        case "feedback": {
+          const feedbackParts = parts.slice(1).join(" ");
+          pi.sendUserMessage(feedbackParts
+            ? `Record knowledge feedback: ${feedbackParts}`
+            : "Record knowledge feedback on a fact (requires triple_id and positive/negative)");
+          break;
+        }
+
+        case "decay": {
+          pi.sendUserMessage("Run a decay scan to archive stale memories and find expired facts");
+          break;
+        }
+
         case "mine": {
           const dirArg = parts.slice(1).join(" ") || ctx.cwd;
           pi.sendUserMessage(`Mine directory: ${dirArg}`);
@@ -1699,14 +1848,14 @@ export default function memoryExtension(pi: ExtensionAPI) {
 
         default: {
           ctx.ui.notify(
-            "Usage: /memory [status|stats|project|search|graph|knowledge|rooms|taxonomy|diary|timeline|topics on|topics off|mine|import|on|off]",
+            "Usage: /memory [status|stats|project|search|graph|knowledge|rooms|taxonomy|diary|timeline|gt|feedback|decay|topics on|topics off|mine|import|on|off]",
             "info"
           );
         }
       }
     },
     getArgumentCompletions: (prefix) => {
-      const commands = ["status", "stats", "project", "search", "graph", "knowledge", "rooms", "taxonomy", "diary", "timeline", "topics", "mine", "import", "on", "off"];
+      const commands = ["status", "stats", "project", "search", "graph", "knowledge", "rooms", "taxonomy", "diary", "timeline", "gt", "feedback", "decay", "topics", "mine", "import", "on", "off"];
       return commands
         .filter((c) => c.startsWith(prefix))
         .map((c) => ({ label: c, value: c, type: "text" as const }));

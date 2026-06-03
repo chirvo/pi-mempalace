@@ -55,6 +55,8 @@ import type {
   Fact,
   KnowledgeResult,
   KnowledgeStats,
+  LowTrustFact,
+  DecayScanResult,
   RoomInfo,
   TaxonomyNode,
   DuplicateCheckResult,
@@ -68,6 +70,7 @@ import {
   chunkText,
   distanceToSimilarity,
   memoryId,
+  jaccardSimilarity,
 } from "./utils.js";
 
 // ---------------------------------------------------------------------------
@@ -137,7 +140,8 @@ export class MemoryStore {
         session_id TEXT NOT NULL DEFAULT '',
         importance REAL DEFAULT 0.5,
         chunk_index INTEGER DEFAULT 0,
-        parent_id TEXT DEFAULT NULL
+        parent_id TEXT DEFAULT NULL,
+        archived INTEGER DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project);
       CREATE INDEX IF NOT EXISTS idx_memories_topic ON memories(topic);
@@ -156,6 +160,36 @@ export class MemoryStore {
     try {
       this.db.exec(
         `ALTER TABLE memories ADD COLUMN parent_id TEXT DEFAULT NULL`
+      );
+    } catch {
+      /* column already exists */
+    }
+    try {
+      this.db.exec(
+        `ALTER TABLE memories ADD COLUMN archived INTEGER DEFAULT 0`
+      );
+    } catch {
+      /* column already exists */
+    }
+
+    // Migrate existing triples tables: add trust_score, trust_updates, last_feedback
+    try {
+      this.db.exec(
+        `ALTER TABLE triples ADD COLUMN trust_score REAL DEFAULT 0.5`
+      );
+    } catch {
+      /* column already exists */
+    }
+    try {
+      this.db.exec(
+        `ALTER TABLE triples ADD COLUMN trust_updates INTEGER DEFAULT 0`
+      );
+    } catch {
+      /* column already exists */
+    }
+    try {
+      this.db.exec(
+        `ALTER TABLE triples ADD COLUMN last_feedback TEXT`
       );
     } catch {
       /* column already exists */
@@ -181,6 +215,9 @@ export class MemoryStore {
         valid_from TEXT,
         valid_to TEXT,
         confidence REAL DEFAULT 1.0,
+        trust_score REAL DEFAULT 0.5,
+        trust_updates INTEGER DEFAULT 0,
+        last_feedback TEXT,
         source_memory_id TEXT,
         project TEXT DEFAULT 'general',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -621,7 +658,7 @@ export class MemoryStore {
     const memRows = this.db
       .prepare(
         `SELECT rowid, id, content, project, topic, source, timestamp
-         FROM memories WHERE rowid IN (${placeholders})`
+         FROM memories WHERE rowid IN (${placeholders}) AND archived = 0`
       )
       .all(...rowids) as MemoryRow[];
 
@@ -696,7 +733,7 @@ export class MemoryStore {
       return "\n## Memory — Recent Context\nNo memories stored yet.";
     }
 
-    const whereClause = project ? "WHERE project = ?" : "";
+    const whereClause = project ? "WHERE project = ? AND archived = 0" : "WHERE archived = 0";
     const params = project ? [project] : [];
     const rows = this.db
       .prepare(
@@ -810,7 +847,7 @@ export class MemoryStore {
     const nResults = Math.min(options?.n_results || 10, 50);
 
     // Build dynamic query
-    const conditions: string[] = [];
+    const conditions: string[] = ["archived = 0"];
     const params: any[] = [];
 
     if (project) {
@@ -879,19 +916,19 @@ export class MemoryStore {
     const sessionCount = (
       this.db
         .prepare(
-          `SELECT COUNT(DISTINCT session_id) as cnt FROM memories WHERE session_id != ''`
+          `SELECT COUNT(DISTINCT session_id) as cnt FROM memories WHERE session_id != '' AND archived = 0`
         )
         .get() as CountRow
     ).cnt;
 
     // Oldest/newest timestamps
     const oldest = (
-      this.db.prepare(`SELECT MIN(timestamp) as val FROM memories`).get() as {
+      this.db.prepare(`SELECT MIN(timestamp) as val FROM memories WHERE archived = 0`).get() as {
         val: string | null;
       }
     ).val;
     const newest = (
-      this.db.prepare(`SELECT MAX(timestamp) as val FROM memories`).get() as {
+      this.db.prepare(`SELECT MAX(timestamp) as val FROM memories WHERE archived = 0`).get() as {
         val: string | null;
       }
     ).val;
@@ -901,7 +938,7 @@ export class MemoryStore {
     const timelineRows = this.db
       .prepare(
         `SELECT SUBSTR(timestamp, 1, 10) as day, COUNT(*) as cnt
-         FROM memories GROUP BY day ORDER BY day`
+         FROM memories WHERE archived = 0 GROUP BY day ORDER BY day`
       )
       .all() as { day: string; cnt: number }[];
     for (const r of timelineRows) {
@@ -911,7 +948,7 @@ export class MemoryStore {
     // Average content length
     const avgLen = (
       this.db
-        .prepare(`SELECT AVG(LENGTH(content)) as val FROM memories`)
+        .prepare(`SELECT AVG(LENGTH(content)) as val FROM memories WHERE archived = 0`)
         .get() as { val: number }
     ).val;
 
@@ -945,7 +982,7 @@ export class MemoryStore {
       .prepare(
         `SELECT topic, project, COUNT(*) as cnt
          FROM memories
-         WHERE topic != 'general'
+         WHERE topic != 'general' AND archived = 0
          GROUP BY topic, project
          HAVING cnt >= 1`
       )
@@ -1027,7 +1064,7 @@ export class MemoryStore {
       .prepare(
         `SELECT id, content, project, topic, source, timestamp
          FROM memories
-         WHERE topic = ? AND project IN (?, ?)
+         WHERE topic = ? AND project IN (?, ?) AND archived = 0
          ORDER BY timestamp DESC
          LIMIT ?`
       )
@@ -1048,7 +1085,7 @@ export class MemoryStore {
   private getProjectTopics(project: string): string[] {
     const rows = this.db
       .prepare(
-        `SELECT DISTINCT topic FROM memories WHERE project = ? AND topic != 'general'`
+        `SELECT DISTINCT topic FROM memories WHERE project = ? AND topic != 'general' AND archived = 0`
       )
       .all(project) as { topic: string }[];
     return rows.map((r) => r.topic);
@@ -1121,8 +1158,8 @@ export class MemoryStore {
 
     const info = this.db
       .prepare(
-        `INSERT INTO triples (subject, predicate, object, valid_from, valid_to, confidence, source_memory_id, project, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO triples (subject, predicate, object, valid_from, valid_to, confidence, trust_score, source_memory_id, project, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         subjectId,
@@ -1131,6 +1168,7 @@ export class MemoryStore {
         input.valid_from || null,
         input.valid_to || null,
         input.confidence ?? 1.0,
+        0.5, // Default trust_score for new facts
         input.source_memory_id || null,
         input.project || "general",
         new Date().toISOString()
@@ -1178,7 +1216,7 @@ export class MemoryStore {
       params.push(options.project);
     }
 
-    query += ` ORDER BY t.created_at DESC`;
+    query += ` ORDER BY t.trust_score DESC, t.created_at DESC`;
 
     const rows = this.db.prepare(query).all(...params) as any[];
 
@@ -1189,6 +1227,8 @@ export class MemoryStore {
       valid_from: r.valid_from,
       valid_to: r.valid_to,
       confidence: r.confidence,
+      trust_score: r.trust_score ?? 0.5,
+      trust_updates: r.trust_updates ?? 0,
       project: r.project,
     }));
 
@@ -1234,7 +1274,7 @@ export class MemoryStore {
       params.push(options.project);
     }
 
-    query += ` ORDER BY t.created_at DESC`;
+    query += ` ORDER BY t.trust_score DESC, t.created_at DESC`;
 
     const rows = this.db.prepare(query).all(...params) as any[];
 
@@ -1245,8 +1285,245 @@ export class MemoryStore {
       valid_from: r.valid_from,
       valid_to: r.valid_to,
       confidence: r.confidence,
+      trust_score: r.trust_score ?? 0.5,
+      trust_updates: r.trust_updates ?? 0,
       project: r.project,
     }));
+  }
+
+  /**
+   * Update the trust score of a fact (triple).
+   * Delta is added to the current trust_score, capped at [0.0, 1.0].
+   * Increments trust_updates counter and records the feedback timestamp.
+   */
+  updateTrust(tripleId: number, delta: number): void {
+    this.ensureLoaded();
+    const row = this.db
+      .prepare("SELECT trust_score, trust_updates FROM triples WHERE id = ?")
+      .get(tripleId) as { trust_score: number; trust_updates: number } | undefined;
+
+    if (!row) {
+      throw new Error(`Triple not found: ${tripleId}`);
+    }
+
+    const newScore = Math.round(Math.max(0.0, Math.min(1.0, (row.trust_score ?? 0.5) + delta)) * 100) / 100;
+    this.db
+      .prepare(
+        `UPDATE triples SET trust_score = ?, trust_updates = ?, last_feedback = ? WHERE id = ?`
+      )
+      .run(newScore, (row.trust_updates ?? 0) + 1, new Date().toISOString(), tripleId);
+  }
+
+  /**
+   * Get all facts with trust_score below 0.3 (unverified).
+   */
+  getLowTrustFacts(): LowTrustFact[] {
+    this.ensureLoaded();
+
+    const rows = this.db
+      .prepare(
+        `SELECT t.id, s.name as subject_name, t.predicate, o.name as object_name,
+                t.trust_score, t.trust_updates, t.project
+         FROM triples t
+         JOIN entities s ON t.subject = s.id
+         JOIN entities o ON t.object = o.id
+         WHERE t.trust_score < 0.3 AND t.valid_to IS NULL
+         ORDER BY t.trust_score ASC`
+      )
+      .all() as any[];
+
+    return rows.map((r) => ({
+      triple_id: r.id,
+      subject: r.subject_name,
+      predicate: r.predicate,
+      object: r.object_name,
+      trust_score: r.trust_score ?? 0.5,
+      trust_updates: r.trust_updates ?? 0,
+      project: r.project,
+    }));
+  }
+
+  /**
+   * Record feedback on a fact's correctness.
+   * Positive feedback (+0.1 trust), negative feedback (-0.15 trust).
+   */
+  knowledgeFeedback(tripleId: number, positive: boolean): void {
+    this.ensureLoaded();
+    const delta = positive ? 0.1 : -0.15;
+    this.updateTrust(tripleId, delta);
+  }
+
+  /**
+   * Run decay scan on the memory store.
+   *
+   * Phase 1: Archive memories that are old (maxAgeDays) AND low importance (minImportance).
+   * Phase 2: Semantic dedup — merge near-duplicate memories using Jaccard text similarity.
+   * Phase 3: Find expired facts (trust_score < 0.1 with trust_updates > 5).
+   *
+   * This is a soft archive — memories are marked archived=1 and hidden from
+   * normal search/recall, but still exist in the database and can be restored.
+   */
+  decayScan(options?: {
+    maxAgeDays?: number;
+    minImportance?: number;
+    semanticDedupThreshold?: number;
+    lowTrustThreshold?: number;
+    minTrustUpdates?: number;
+  }): DecayScanResult {
+    this.ensureLoaded();
+
+    const maxAgeDays = options?.maxAgeDays ?? 180;
+    const minImportance = options?.minImportance ?? 0.5;
+    const semanticDedupThreshold = options?.semanticDedupThreshold ?? 0.92;
+    const lowTrustThreshold = options?.lowTrustThreshold ?? 0.1;
+    const minTrustUpdates = options?.minTrustUpdates ?? 5;
+
+    const archived: { id: string; reason: string }[] = [];
+    const merged: { into: string; from: string[]; similarity: number }[] = [];
+    const expired_facts: { subject: string; predicate: string; object: string; trust_score: number }[] = [];
+
+    // Phase 1: Archive old + low-importance memories
+    const cutoffDate = new Date(
+      Date.now() - maxAgeDays * 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    const staleRows = this.db
+      .prepare(
+        `SELECT id, content, project, topic, importance, timestamp
+         FROM memories
+         WHERE archived = 0 AND importance < ? AND timestamp < ?
+         ORDER BY timestamp ASC`
+      )
+      .all(minImportance, cutoffDate) as any[];
+
+    const archiveTransaction = this.db.transaction(() => {
+      for (const row of staleRows) {
+        this.db
+          .prepare(`UPDATE memories SET archived = 1 WHERE id = ?`)
+          .run(row.id);
+        archived.push({
+          id: row.id,
+          reason: `stale (${(row.timestamp || "").slice(0, 10)}) + low importance (${row.importance})`,
+        });
+      }
+    });
+    archiveTransaction();
+
+    // Phase 2: Semantic dedup — merge near-duplicate memories
+    // Uses Jaccard similarity on word tokens (fast, no model inference needed).
+    // Groups by project to avoid cross-project comparisons.
+    const dedupCandidates = this.db
+      .prepare(
+        `SELECT id, content, importance, project
+         FROM memories
+         WHERE archived = 0 AND LENGTH(content) > 50
+         ORDER BY project, importance DESC`
+      )
+      .all() as { id: string; content: string; importance: number; project: string }[];
+
+    // Group by project
+    const byProject: Record<string, typeof dedupCandidates> = {};
+    for (const row of dedupCandidates) {
+      if (!byProject[row.project]) byProject[row.project] = [];
+      byProject[row.project].push(row);
+    }
+
+    const alreadyMerged = new Set<string>();
+    for (const [project, rows] of Object.entries(byProject)) {
+      if (rows.length < 2) continue;
+
+      // Compare each row with rows that follow it (importance-descending, so
+      // earlier rows are the "keepers" with higher importance)
+      for (let i = 0; i < rows.length - 1; i++) {
+        if (alreadyMerged.has(rows[i].id)) continue;
+
+        const a = rows[i];
+        const mergedFrom: string[] = [];
+
+        for (let j = i + 1; j < rows.length; j++) {
+          if (alreadyMerged.has(rows[j].id)) continue;
+
+          const b = rows[j];
+
+          // Quick length check: if lengths differ by >2x, skip (unlikely to be similar)
+          const lenRatio = Math.max(a.content.length, b.content.length) /
+            Math.min(a.content.length, b.content.length);
+          if (lenRatio > 2.0) continue;
+
+          const similarity = jaccardSimilarity(a.content, b.content);
+          if (similarity >= semanticDedupThreshold) {
+            // Archive the lower-importance one
+            this.db
+              .prepare(`UPDATE memories SET archived = 1 WHERE id = ?`)
+              .run(b.id);
+            alreadyMerged.add(b.id);
+            mergedFrom.push(b.id);
+          }
+        }
+
+        if (mergedFrom.length > 0) {
+          for (const mergedId of mergedFrom) {
+            archived.push({
+              id: mergedId,
+              reason: `merged into ${a.id} (semantic dedup > ${semanticDedupThreshold})`,
+            });
+          }
+          merged.push({
+            into: a.id,
+            from: mergedFrom,
+            similarity: semanticDedupThreshold,
+          });
+        }
+      }
+    }
+
+    // Phase 3: Find expired facts (low trust + many refutations)
+    const expiredRows = this.db
+      .prepare(
+        `SELECT s.name as subject_name, t.predicate, o.name as object_name,
+                t.trust_score
+         FROM triples t
+         JOIN entities s ON t.subject = s.id
+         JOIN entities o ON t.object = o.id
+         WHERE t.valid_to IS NULL
+           AND t.trust_score < ?
+           AND t.trust_updates > ?
+         ORDER BY t.trust_score ASC`
+      )
+      .all(lowTrustThreshold, minTrustUpdates) as any[];
+
+    for (const r of expiredRows) {
+      expired_facts.push({
+        subject: r.subject_name,
+        predicate: r.predicate,
+        object: r.object_name,
+        trust_score: r.trust_score ?? 0.5,
+      });
+    }
+
+    // Build summary
+    // Count archived items that came from age-based archiving vs semantic dedup
+    const mergeCount = merged.reduce((sum, m) => sum + m.from.length, 0);
+    const staleCount = archived.length - mergeCount;
+
+    const summaryLines: string[] = [`Decay scan complete.`];
+    if (staleCount > 0) {
+      summaryLines.push(`  Archived ${staleCount} stale memory(s) (older than ${maxAgeDays}d, importance < ${minImportance}).`);
+    }
+    if (mergeCount > 0) {
+      summaryLines.push(`  Merged ${mergeCount} near-duplicate(s) into ${merged.length} cluster(s) (Jaccard > ${semanticDedupThreshold}).`);
+    }
+    if (staleCount === 0 && mergeCount === 0) {
+      summaryLines.push(`  No stale memories found.`);
+    }
+    if (expired_facts.length > 0) {
+      summaryLines.push(`  Flagged ${expired_facts.length} expired fact(s) (trust < ${lowTrustThreshold}, updates > ${minTrustUpdates}).`);
+    } else {
+      summaryLines.push(`  No expired facts found.`);
+    }
+    const summary = summaryLines.join("\n");
+
+    return { archived, merged, expired_facts, summary };
   }
 
   /**
@@ -1324,7 +1601,7 @@ export class MemoryStore {
   private groupedCounts(column: string): Record<string, number> {
     const result: Record<string, number> = {};
     const rows = this.db
-      .prepare(`SELECT ${column}, COUNT(*) as cnt FROM memories GROUP BY ${column}`)
+      .prepare(`SELECT ${column}, COUNT(*) as cnt FROM memories WHERE archived = 0 GROUP BY ${column}`)
       .all() as Record<string, any>[];
     for (const r of rows) {
       result[r[column] || "general"] = r.cnt;
@@ -1347,11 +1624,11 @@ export class MemoryStore {
 
     if (project) {
       query = `SELECT topic, COUNT(*) as cnt FROM memories
-               WHERE project = ? GROUP BY topic ORDER BY cnt DESC`;
+               WHERE project = ? AND archived = 0 GROUP BY topic ORDER BY cnt DESC`;
       params = [project];
     } else {
       query = `SELECT topic, COUNT(*) as cnt FROM memories
-               GROUP BY topic ORDER BY cnt DESC`;
+               WHERE archived = 0 GROUP BY topic ORDER BY cnt DESC`;
       params = [];
     }
 
@@ -1361,7 +1638,7 @@ export class MemoryStore {
       // Find which projects use this topic
       const projectRows = this.db
         .prepare(
-          `SELECT DISTINCT project FROM memories WHERE topic = ?`
+          `SELECT DISTINCT project FROM memories WHERE topic = ? AND archived = 0`
         )
         .all(r.topic) as { project: string }[];
 
@@ -1382,7 +1659,7 @@ export class MemoryStore {
     const rows = this.db
       .prepare(
         `SELECT project, topic, COUNT(*) as cnt FROM memories
-         GROUP BY project, topic ORDER BY project, cnt DESC`
+         WHERE archived = 0 GROUP BY project, topic ORDER BY project, cnt DESC`
       )
       .all() as { project: string; topic: string; cnt: number }[];
 
@@ -1479,7 +1756,7 @@ export class MemoryStore {
       .prepare(
         `SELECT id, content, project, topic, source, timestamp
          FROM memories
-         WHERE project = ? AND source = 'diary'
+         WHERE project = ? AND source = 'diary' AND archived = 0
          ORDER BY timestamp ASC
          LIMIT ?`
       )
@@ -1505,12 +1782,14 @@ export class MemoryStore {
     let query: string;
     let params: any[];
 
+    const selectTrust = `t.id, t.predicate, t.valid_from, t.valid_to, t.confidence,
+               t.trust_score, t.trust_updates, t.project, t.created_at,
+               s.name as subject_name, o.name as object_name`;
+
     if (entity) {
       const entityId = `ent_${contentHash(entity.toLowerCase())}`;
       query = `
-        SELECT t.id, t.predicate, t.valid_from, t.valid_to, t.confidence,
-               t.project, t.created_at,
-               s.name as subject_name, o.name as object_name
+        SELECT ${selectTrust}
         FROM triples t
         JOIN entities s ON t.subject = s.id
         JOIN entities o ON t.object = o.id
@@ -1519,9 +1798,7 @@ export class MemoryStore {
       params = [entityId, entityId];
     } else {
       query = `
-        SELECT t.id, t.predicate, t.valid_from, t.valid_to, t.confidence,
-               t.project, t.created_at,
-               s.name as subject_name, o.name as object_name
+        SELECT ${selectTrust}
         FROM triples t
         JOIN entities s ON t.subject = s.id
         JOIN entities o ON t.object = o.id
@@ -1539,6 +1816,8 @@ export class MemoryStore {
       valid_from: r.valid_from,
       valid_to: r.valid_to,
       confidence: r.confidence,
+      trust_score: r.trust_score ?? 0.5,
+      trust_updates: r.trust_updates ?? 0,
       project: r.project,
       created_at: r.created_at,
     }));

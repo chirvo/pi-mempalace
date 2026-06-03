@@ -117,3 +117,37 @@ export function distanceToSimilarity(distance: number): number {
 export function memoryId(contentHash: string): string {
   return `mem_${contentHash}`;
 }
+
+// ---------------------------------------------------------------------------
+// Text Similarity (for semantic dedup)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute Jaccard similarity between two texts using word-level tokens.
+ * Lowercases, removes punctuation, filters short words (< 3 chars).
+ * Returns 0.0 (completely different) to 1.0 (identical token sets).
+ */
+export function jaccardSimilarity(a: string, b: string): number {
+  const tokenize = (text: string): Set<string> =>
+    new Set(
+      text
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 2)
+    );
+
+  const wordsA = tokenize(a);
+  const wordsB = tokenize(b);
+
+  if (wordsA.size === 0 && wordsB.size === 0) return 1.0;
+  if (wordsA.size === 0 || wordsB.size === 0) return 0.0;
+
+  // Intersection
+  let intersection = 0;
+  for (const w of wordsA) {
+    if (wordsB.has(w)) intersection++;
+  }
+
+  const union = wordsA.size + wordsB.size - intersection;
+  return union === 0 ? 0.0 : intersection / union;
+}

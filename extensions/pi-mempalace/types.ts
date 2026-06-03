@@ -149,6 +149,30 @@ export interface Fact {
   valid_to: string | null;
   confidence: number;
   project: string;
+  trust_score: number;
+  trust_updates: number;
+}
+
+export interface TrustFeedbackInput {
+  triple_id: number;
+  positive: boolean;
+}
+
+export interface LowTrustFact {
+  triple_id: number;
+  subject: string;
+  predicate: string;
+  object: string;
+  trust_score: number;
+  trust_updates: number;
+  project: string;
+}
+
+export interface DecayScanResult {
+  archived: { id: string; reason: string }[];
+  merged: { into: string; from: string[]; similarity: number }[];
+  expired_facts: { subject: string; predicate: string; object: string; trust_score: number }[];
+  summary: string;
 }
 
 export interface KnowledgeResult {
@@ -199,6 +223,8 @@ export interface TimelineFact {
   valid_from: string | null;
   valid_to: string | null;
   confidence: number;
+  trust_score: number;
+  trust_updates: number;
   project: string;
   created_at: string;
 }

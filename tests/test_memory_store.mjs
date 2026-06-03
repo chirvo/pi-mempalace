@@ -856,6 +856,298 @@ async function runTests() {
   });
 
   // -------------------------------------------------------------------
+  // Trust Scoring tests
+  // -------------------------------------------------------------------
+
+  test("trust: new triples have default trust_score 0.5", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      store.addTriple({ subject: "app", predicate: "uses", object: "React" });
+      const result = store.queryEntity("app");
+      assert.equal(result.facts.length, 1);
+      assert.equal(result.facts[0].trust_score, 0.5);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("trust: updateTrust increments and decrements", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      const r = store.addTriple({ subject: "app", predicate: "uses", object: "React" });
+
+      // Increment
+      store.updateTrust(r.id, 0.1);
+      let result = store.queryEntity("app");
+      assert.equal(result.facts[0].trust_score, 0.6);
+      assert.equal(result.facts[0].trust_updates, 1);
+
+      // Decrement
+      store.updateTrust(r.id, -0.15);
+      result = store.queryEntity("app");
+      assert.equal(result.facts[0].trust_score, 0.45);
+      assert.equal(result.facts[0].trust_updates, 2);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("trust: caps at 1.0 and 0.0", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      const r = store.addTriple({ subject: "app", predicate: "uses", object: "React" });
+
+      // Push to cap at 1.0
+      store.updateTrust(r.id, 1.0);
+      let result = store.queryEntity("app");
+      assert.equal(result.facts[0].trust_score, 1.0);
+
+      // Push to cap at 0.0
+      store.updateTrust(r.id, -2.0);
+      result = store.queryEntity("app");
+      assert.equal(result.facts[0].trust_score, 0.0);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("trust: queryEntity sorts by trust_score DESC", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      const r1 = store.addTriple({ subject: "app", predicate: "uses", object: "Redis" });
+      const r2 = store.addTriple({ subject: "app", predicate: "uses", object: "PostgreSQL" });
+      const r3 = store.addTriple({ subject: "app", predicate: "uses", object: "MySQL" });
+
+      // Set different trust scores (not in order)
+      store.updateTrust(r1.id, -0.2); // 0.3
+      store.updateTrust(r2.id, 0.3);  // 0.8
+      store.updateTrust(r2.id, 0.1);  // 0.9
+      // r3 stays at 0.5
+
+      const result = store.queryEntity("app");
+      assert.equal(result.facts.length, 3);
+      // Should be sorted: PostgreSQL (0.9), MySQL (0.5), Redis (0.3)
+      assert.equal(result.facts[0].object, "PostgreSQL");
+      assert.equal(result.facts[1].object, "MySQL");
+      assert.equal(result.facts[2].object, "Redis");
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("trust: getLowTrustFacts returns facts below threshold", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      const r1 = store.addTriple({ subject: "app", predicate: "uses", object: "Redis" });
+      const r2 = store.addTriple({ subject: "app", predicate: "uses", object: "PostgreSQL" });
+
+      // Push Redis below 0.3
+      store.updateTrust(r1.id, -0.4); // 0.1
+      // PostgreSQL stays at 0.5
+
+      const low = store.getLowTrustFacts();
+      assert.equal(low.length, 1);
+      assert.equal(low[0].object, "Redis");
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("trust: knowledgeFeedback positive and negative", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      const r = store.addTriple({ subject: "app", predicate: "uses", object: "React" });
+
+      // Positive feedback
+      store.knowledgeFeedback(r.id, true);
+      let result = store.queryEntity("app");
+      assert.equal(result.facts[0].trust_score, 0.6);
+
+      // Negative feedback
+      store.knowledgeFeedback(r.id, false);
+      result = store.queryEntity("app");
+      assert.equal(result.facts[0].trust_score, 0.45);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("trust: unverified triples have trust_score < 0.3", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      const r = store.addTriple({ subject: "app", predicate: "uses", object: "UntestedLib" });
+      store.updateTrust(r.id, -0.3); // 0.2 — below threshold
+      const result = store.queryEntity("app");
+      assert.ok(result.facts[0].trust_score < 0.3);
+      assert.equal(result.facts[0].trust_updates, 1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Decay scanning tests
+  // -------------------------------------------------------------------
+
+  test("decayScan: empty store returns no results", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      const result = store.decayScan();
+      assert.equal(result.archived.length, 0);
+      assert.equal(result.merged.length, 0);
+      assert.equal(result.expired_facts.length, 0);
+      assert.ok(result.summary.length > 0);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("decayScan: archives old low-importance memories", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      // Ensure store is loaded
+      store.load();
+
+      // Store a memory with old timestamp and low importance
+      await store.store({
+        content: "old trivia from long ago",
+        project: "test",
+        topic: "trivia",
+        timestamp: new Date(Date.now() - 200 * 24 * 60 * 60 * 1000).toISOString(), // 200 days ago
+        importance: 0.2,
+      });
+
+      // Store a recent high-importance one (should not be archived)
+      await store.store({
+        content: "recent important decision",
+        project: "test",
+        topic: "important",
+        timestamp: new Date().toISOString(),
+        importance: 0.9,
+      });
+
+      assert.equal(store.size, 2);
+
+      const result = store.decayScan({ maxAgeDays: 180, minImportance: 0.5 });
+      assert.equal(result.archived.length, 1, "Should archive one old/low-importance memory");
+      assert.ok(result.archived[0].reason.includes("stale") || result.archived[0].reason.includes("importance"));
+      assert.ok(result.summary.includes("Archived") || result.archived.length > 0);
+
+      // The archived memory should still be findable by direct query (soft archive)
+      assert.equal(store.size, 2, "Soft archive — size shouldn't change");
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("decayScan: detects expired facts (low trust + many updates)", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      // Simulate a fact that's been repeatedly marked wrong
+      const r = store.addTriple({ subject: "app", predicate: "uses", object: "BadLib" });
+      for (let i = 0; i < 6; i++) {
+        store.updateTrust(r.id, -0.2); // Each time: wrong
+      }
+      // trust_score should be 0.0 now, trust_updates = 6
+
+      // A good fact
+      const r2 = store.addTriple({ subject: "app", predicate: "uses", object: "GoodLib" });
+
+      const result = store.decayScan();
+      assert.equal(result.expired_facts.length, 1, "Should find one expired fact");
+      assert.equal(result.expired_facts[0].object, "BadLib");
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("decayScan: respects custom thresholds", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      await store.store({
+        content: "somewhat stale",
+        timestamp: new Date(Date.now() - 100 * 24 * 60 * 60 * 1000).toISOString(), // 100 days
+        importance: 0.4,
+      });
+
+      // With strict threshold (30 days), this should be archived
+      const strictResult = store.decayScan({ maxAgeDays: 30, minImportance: 0.5 });
+      assert.equal(strictResult.archived.length, 1);
+
+      // With lenient threshold (200 days), it should NOT be archived
+      const lenientResult = store.decayScan({ maxAgeDays: 200, minImportance: 0.5 });
+      assert.equal(lenientResult.archived.length, 0);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("decayScan: merges near-duplicate memories via Jaccard similarity", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      // Store two very similar memories
+      await store.store({
+        content: "We decided to use PostgreSQL as our primary database for all transactional workloads",
+        project: "test",
+        topic: "db",
+        importance: 0.8,
+      });
+      await store.store({
+        content: "We chose PostgreSQL to be the primary database for transactional workloads across the system",
+        project: "test",
+        topic: "db",
+        importance: 0.4, // lower importance — should be merged INTO the first
+      });
+
+      // Store something completely different
+      await store.store({
+        content: "The frontend uses React with TypeScript and Tailwind CSS",
+        project: "test",
+        topic: "frontend",
+        importance: 0.7,
+      });
+
+      assert.equal(store.size, 3);
+
+      const result = store.decayScan({
+        maxAgeDays: 999, // Don't archive by age
+        minImportance: 0, // Don't archive by importance
+        semanticDedupThreshold: 0.3, // Low threshold so similar texts match
+      });
+
+      // Should have merged at least one pair
+      const totalMerged = result.merged.reduce((sum, m) => sum + m.from.length, 0);
+      assert.ok(totalMerged >= 1, `Expected at least 1 merge, got ${totalMerged}`);
+
+      // The merged memory should have higher importance
+      const keeperProject = result.merged.find(m => m.from.length > 0);
+      assert.ok(keeperProject, "Should have a merge record");
+      assert.equal(keeperProject.from.length, 1, "Should merge exactly 1 similar memory");
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("decayScan: does not merge different content", async () => {
+    const { store, dir } = createTempStore();
+    try {
+      await store.store({ content: "PostgreSQL database choice for transactions", project: "test", importance: 0.8 });
+      await store.store({ content: "React frontend with TypeScript tailwind components", project: "test", importance: 0.7 });
+      await store.store({ content: "Docker compose deployment configuration for staging", project: "test", importance: 0.6 });
+
+      const result = store.decayScan({
+        maxAgeDays: 999,
+        minImportance: 0,
+        semanticDedupThreshold: 0.92, // High threshold — won't match different content
+      });
+
+      assert.equal(result.merged.length, 0, "Should not merge different content");
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  // -------------------------------------------------------------------
   // Run all tests
   // -------------------------------------------------------------------
 
